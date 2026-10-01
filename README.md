@@ -38,21 +38,6 @@ A full-stack, responsive attendance management web application built with **Reac
   - Computer Department analytics & class schedules.
   - Low Attendance Defaulters list (<75%) for administrative tracking.
 
----
-
-## 🚀 Pre-Seeded Demo Credentials
-
-| Role | Name | Email | Password | UID |
-| :--- | :--- | :--- | :--- | :--- |
-| **Admin** | Ravi | `raviadmin@attendancex.edu` | `Admin@123` | `ADM-001` |
-| **HOD** | C.G.Ajudiya | `hod.cg.ajudiya@attendancex.edu` | `Hod@123` | `HOD-COMP-01` |
-| **Faculty** | J.D.Vadalia | `faculty.jd.vadalia@attendancex.edu` | `Faculty@123` | `FAC-COMP-101` |
-| **Faculty** | P.V.Patel | `faculty.pv.patel@attendancex.edu` | `Faculty@123` | `FAC-COMP-102` |
-| **Faculty** | J.V.Shparia | `faculty.jv.shparia@attendancex.edu` | `Faculty@123` | `FAC-COMP-103` |
-| **Faculty** | Shubham | `faculty.shubham@attendancex.edu` | `Faculty@123` | `FAC-COMP-104` |
-| **Student** | *(each student's own name)* | `<enrolment_number>@attendancex.edu` | *own enrolment number* | `STU-COMP-XXX` |
-
-> Every student logs in with their enrolment number as both the email prefix and the password — e.g. enrolment `246250307001` logs in as `246250307001@attendancex.edu` with password `246250307001`.
 
 ---
 
