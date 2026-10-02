@@ -63,7 +63,7 @@ async function restoreStudent() {
       percentage, weighted_percentage, lecture_present, lecture_total,
       lab_present, lab_total
     )
-    VALUES (?, ?, ?, ?, ?, 'Computer Department', 6, 'A', 'Active', ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, 'Computer Department', 5, 'A', 'Active', ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     uid, userRes.id, name, enrolment, avatar,
     totalPres, totalClasses, percentage, weightedScore,

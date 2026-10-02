@@ -87,7 +87,7 @@ export const StudentDashboard = ({ user }) => {
     enrolment_number: '2024COMP0101',
     student_photo: cleanAvatarUrl(user?.avatar, user?.name, null, false),
     department: 'Computer Department',
-    semester: 6,
+    semester: 5,
     division: 'A',
     status: 'Active',
     percentage: 92.0,
@@ -224,7 +224,7 @@ export const StudentDashboard = ({ user }) => {
             <div>
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-xs font-semibold uppercase tracking-wider mb-1.5">
                 <GraduationCap className="w-3.5 h-3.5" />
-                <span>Semester {s.semester || 6} • Div {s.division || 'A'}</span>
+                <span>Semester {s.semester || 5} • Div {s.division || 'A'}</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-white">{s.name}</h1>
               <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-3 font-mono">
@@ -251,7 +251,7 @@ export const StudentDashboard = ({ user }) => {
 
       {/* ATTENDANCE GAUGES & SUMMARY METRICS (In-Flow Expandable 3-Card Grid) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-        
+
         {/* Metric 1: Overall Percentage Gauge with In-Flow Dynamic Expansion */}
         <div
           className="group glass-panel p-6 rounded-2xl border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-900/80 transition-all duration-300 cursor-pointer flex flex-col justify-between"
@@ -267,9 +267,8 @@ export const StudentDashboard = ({ user }) => {
               </span>
               <div className="flex items-center gap-2">
                 <span
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider ${
-                    isEligible ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                  }`}
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider ${isEligible ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                    }`}
                 >
                   {isEligible ? 'Eligible' : 'Warning'}
                 </span>
@@ -290,9 +289,8 @@ export const StudentDashboard = ({ user }) => {
 
             <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  isEligible ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-amber-500 to-rose-500'
-                }`}
+                className={`h-full rounded-full transition-all duration-500 ${isEligible ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-amber-500 to-rose-500'
+                  }`}
                 style={{ width: `${Math.min(s.percentage, 100)}%` }}
               ></div>
             </div>
@@ -307,11 +305,10 @@ export const StudentDashboard = ({ user }) => {
 
           {/* In-Flow Collapsible Details: Dynamically pushes down the history section */}
           <div
-            className={`transition-all duration-300 ease-in-out overflow-hidden text-left ${
-              activeInfoCard === 'overall'
+            className={`transition-all duration-300 ease-in-out overflow-hidden text-left ${activeInfoCard === 'overall'
                 ? 'max-h-[600px] opacity-100 mt-4 pt-4 border-t border-slate-800/80'
                 : 'max-h-0 opacity-0 group-hover:max-h-[600px] group-hover:opacity-100 group-hover:mt-4 group-hover:pt-4 group-hover:border-t group-hover:border-slate-800/80'
-            }`}
+              }`}
           >
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -413,11 +410,10 @@ export const StudentDashboard = ({ user }) => {
 
           {/* In-Flow Collapsible Details: Dynamically pushes down the history section */}
           <div
-            className={`transition-all duration-300 ease-in-out overflow-hidden text-left ${
-              activeInfoCard === 'theory'
+            className={`transition-all duration-300 ease-in-out overflow-hidden text-left ${activeInfoCard === 'theory'
                 ? 'max-h-[600px] opacity-100 mt-4 pt-4 border-t border-slate-800/80'
                 : 'max-h-0 opacity-0 group-hover:max-h-[600px] group-hover:opacity-100 group-hover:mt-4 group-hover:pt-4 group-hover:border-t group-hover:border-slate-800/80'
-            }`}
+              }`}
           >
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -507,11 +503,10 @@ export const StudentDashboard = ({ user }) => {
 
           {/* In-Flow Collapsible Details: Dynamically pushes down the history section */}
           <div
-            className={`transition-all duration-300 ease-in-out overflow-hidden text-left ${
-              activeInfoCard === 'lab'
+            className={`transition-all duration-300 ease-in-out overflow-hidden text-left ${activeInfoCard === 'lab'
                 ? 'max-h-[600px] opacity-100 mt-4 pt-4 border-t border-slate-800/80'
                 : 'max-h-0 opacity-0 group-hover:max-h-[600px] group-hover:opacity-100 group-hover:mt-4 group-hover:pt-4 group-hover:border-t group-hover:border-slate-800/80'
-            }`}
+              }`}
           >
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -602,26 +597,25 @@ export const StudentDashboard = ({ user }) => {
           {subjects.map((sub) => {
             const isSubEligible = sub.percentage >= 75;
             const isSubCritical = sub.percentage < 50;
-            
+
             // Modern distinct gradient accent per subject
             const themeBadge = sub.short_name === 'IOT'
               ? 'from-purple-600 to-indigo-600 text-white'
               : sub.short_name === 'IS'
-              ? 'from-sky-600 to-blue-600 text-white'
-              : sub.short_name === 'ST'
-              ? 'from-violet-600 to-fuchsia-600 text-white'
-              : sub.short_name === 'CHSM'
-              ? 'from-amber-600 to-orange-600 text-white'
-              : 'from-emerald-600 to-teal-600 text-white';
+                ? 'from-sky-600 to-blue-600 text-white'
+                : sub.short_name === 'ST'
+                  ? 'from-violet-600 to-fuchsia-600 text-white'
+                  : sub.short_name === 'CHSM'
+                    ? 'from-amber-600 to-orange-600 text-white'
+                    : 'from-emerald-600 to-teal-600 text-white';
 
             return (
               <div
                 key={sub.code || sub.short_name}
-                className={`glass-panel p-6 rounded-3xl border transition-all duration-300 hover:shadow-2xl flex flex-col justify-between ${
-                  !isSubEligible
+                className={`glass-panel p-6 rounded-3xl border transition-all duration-300 hover:shadow-2xl flex flex-col justify-between ${!isSubEligible
                     ? 'border-amber-500/40 bg-gradient-to-br from-slate-900 via-amber-950/15 to-slate-900'
                     : 'border-slate-800 hover:border-indigo-500/40 bg-slate-900/90'
-                }`}
+                  }`}
               >
                 <div>
                   {/* Subject Header */}
@@ -640,13 +634,12 @@ export const StudentDashboard = ({ user }) => {
                       </div>
                     </div>
 
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider shrink-0 ${
-                      isSubCritical
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider shrink-0 ${isSubCritical
                         ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                         : !isSubEligible
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                    }`}>
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      }`}>
                       {sub.status || (isSubEligible ? 'Eligible' : 'Warning')}
                     </span>
                   </div>
@@ -659,9 +652,8 @@ export const StudentDashboard = ({ user }) => {
                           Full Subject Attendance (Lecture + Lab)
                         </span>
                         <div className="flex items-baseline gap-2 mt-1">
-                          <span className={`text-3xl sm:text-4xl font-black tracking-tight ${
-                            isSubEligible ? 'text-emerald-400' : isSubCritical ? 'text-rose-400' : 'text-amber-400'
-                          }`}>
+                          <span className={`text-3xl sm:text-4xl font-black tracking-tight ${isSubEligible ? 'text-emerald-400' : isSubCritical ? 'text-rose-400' : 'text-amber-400'
+                            }`}>
                             {sub.percentage}%
                           </span>
                           <span className="text-xs text-slate-400 font-semibold">
@@ -679,13 +671,12 @@ export const StudentDashboard = ({ user }) => {
                     {/* Progress Bar */}
                     <div className="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isSubEligible
+                        className={`h-full rounded-full transition-all duration-500 ${isSubEligible
                             ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
                             : isSubCritical
-                            ? 'bg-gradient-to-r from-rose-600 to-red-500'
-                            : 'bg-gradient-to-r from-amber-500 to-orange-500'
-                        }`}
+                              ? 'bg-gradient-to-r from-rose-600 to-red-500'
+                              : 'bg-gradient-to-r from-amber-500 to-orange-500'
+                          }`}
                         style={{ width: `${Math.min(sub.percentage, 100)}%` }}
                       ></div>
                     </div>
@@ -706,7 +697,7 @@ export const StudentDashboard = ({ user }) => {
 
                   {/* Component Breakdown: Theory Lectures & Practical Labs */}
                   <div className="grid grid-cols-2 gap-3">
-                    
+
                     {/* Theory Sub-Box */}
                     <div className="p-3.5 rounded-2xl bg-slate-950/50 border border-blue-500/20 flex flex-col justify-between">
                       <div>
@@ -817,9 +808,8 @@ export const StudentDashboard = ({ user }) => {
                 <button
                   key={t}
                   onClick={() => setFilterType(t)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                    filterType === t ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-                  }`}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${filterType === t ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
                 >
                   {t}
                 </button>
@@ -875,11 +865,10 @@ export const StudentDashboard = ({ user }) => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                            item.session_type === 'Lab'
+                          className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${item.session_type === 'Lab'
                               ? 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
                               : 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
-                          }`}
+                            }`}
                         >
                           {item.session_type}
                         </span>
@@ -897,11 +886,10 @@ export const StudentDashboard = ({ user }) => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                            isPresent
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${isPresent
                               ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
                               : 'bg-rose-500/10 text-rose-300 border border-rose-500/30'
-                          }`}
+                            }`}
                         >
                           {isPresent ? (
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
@@ -934,7 +922,7 @@ export const StudentDashboard = ({ user }) => {
       {selectedSessionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
           <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden my-auto animate-fadeIn">
-            
+
             {/* Modal Header */}
             <div className="p-5 sm:p-6 border-b border-slate-800 flex items-start sm:items-center justify-between gap-4 bg-slate-950/60">
               <div>
@@ -942,11 +930,10 @@ export const StudentDashboard = ({ user }) => {
                   <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono">
                     {selectedSessionModal.date}
                   </span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
-                    selectedSessionModal.session_type === 'Lab'
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${selectedSessionModal.session_type === 'Lab'
                       ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
                       : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
-                  }`}>
+                    }`}>
                     {selectedSessionModal.session_type}
                   </span>
                   <span className="text-xs text-slate-400">
@@ -979,11 +966,10 @@ export const StudentDashboard = ({ user }) => {
                     <button
                       key={st}
                       onClick={() => setModalFilterStatus(st)}
-                      className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                        modalFilterStatus === st
+                      className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${modalFilterStatus === st
                           ? 'bg-indigo-600 text-white shadow-md'
                           : 'text-slate-400 hover:text-white'
-                      }`}
+                        }`}
                     >
                       {st}
                     </button>
@@ -1000,11 +986,10 @@ export const StudentDashboard = ({ user }) => {
                     <button
                       key={b.id}
                       onClick={() => setModalBatchFilter(b.id)}
-                      className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                        modalBatchFilter === b.id
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${modalBatchFilter === b.id
                           ? 'bg-indigo-600 text-white shadow-md'
                           : 'text-slate-400 hover:text-white'
-                      }`}
+                        }`}
                     >
                       {b.label}
                     </button>
@@ -1090,9 +1075,8 @@ export const StudentDashboard = ({ user }) => {
                             return (
                               <tr
                                 key={item.id || idx}
-                                className={`transition-colors ${
-                                  isCurrentUser ? 'bg-indigo-950/40 border-l-2 border-indigo-500' : 'hover:bg-slate-800/40'
-                                }`}
+                                className={`transition-colors ${isCurrentUser ? 'bg-indigo-950/40 border-l-2 border-indigo-500' : 'hover:bg-slate-800/40'
+                                  }`}
                               >
                                 <td className="px-4 py-3 text-center text-xs text-slate-500 font-mono">
                                   {idx + 1}
@@ -1123,20 +1107,18 @@ export const StudentDashboard = ({ user }) => {
                                   <div className="text-[10px] text-slate-500">{item.student_uid}</div>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                    studentClass === 'Class A' || studentClass === 'Batch A'
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${studentClass === 'Class A' || studentClass === 'Batch A'
                                       ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                                       : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                                  }`}>
+                                    }`}>
                                     {studentClass}
                                   </span>
                                 </td>
                                 <td className="px-4 py-3 text-right whitespace-nowrap">
-                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                                    isPresent
+                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${isPresent
                                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                                       : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                                  }`}>
+                                    }`}>
                                     {isPresent ? (
                                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                                     ) : (

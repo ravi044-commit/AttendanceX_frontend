@@ -252,7 +252,7 @@ export const initDatabase = async () => {
       faculty_name TEXT NOT NULL,
       faculty_email TEXT NOT NULL,
       type TEXT CHECK(type IN ('Lecture', 'Lab')),
-      semester INTEGER DEFAULT 6,
+      semester INTEGER DEFAULT 5,
       room TEXT,
       time_slot TEXT
     )

@@ -191,7 +191,7 @@ async function seedRealStudents() {
         percentage, weighted_percentage, lecture_present, lecture_total,
         lab_present, lab_total
       )
-      VALUES (?, ?, ?, ?, ?, 'Computer Department', 6, 'A', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, 'Computer Department', 5, 'A', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       formattedUid, userRes.id, s.name, s.enrollment_number, avatar,
       studentStatus, totalPres, totalClasses, percentage, weightedScore,

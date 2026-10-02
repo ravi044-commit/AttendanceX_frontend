@@ -208,7 +208,7 @@ export const AdminDashboard = () => {
           <div className="mt-3 text-3xl font-black text-white">
             {summary ? summary.totalStudents : students.length}
           </div>
-          <p className="text-xs text-slate-400 mt-1">Enrolled in 6th Semester</p>
+          <p className="text-xs text-slate-400 mt-1">Enrolled in 5th Semester</p>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-800/80">

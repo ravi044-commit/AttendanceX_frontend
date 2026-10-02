@@ -158,7 +158,7 @@ app.post('/api/auth/login', async (req, res) => {
         validPassword = true;
       }
     }
-    
+
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid password' });
     }
@@ -494,7 +494,7 @@ app.post('/api/students', async (req, res) => {
         lab_present, lab_total
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0)
-    `, [uid, userRes.id, name, enrolment_number, photo, dept, semester || 6, division || 'A', status || 'Active']);
+    `, [uid, userRes.id, name, enrolment_number, photo, dept, semester || 5, division || 'A', status || 'Active']);
 
     const newStudent = await getQuery('SELECT * FROM students WHERE uid = ?', [uid]);
     res.status(201).json(newStudent);

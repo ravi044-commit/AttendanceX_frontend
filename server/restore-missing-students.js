@@ -54,7 +54,7 @@ const studentExists = async (enrol) => {
          percentage, weighted_percentage,
          lecture_present, lecture_total,
          lab_present, lab_total
-       ) VALUES (?,?,?,?,?, 'Computer Department', 6, 'A', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?,?,?,?,?, 'Computer Department', 5, 'A', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 formattedUid,
                 userRes.id,

@@ -261,7 +261,7 @@ export const HodDashboard = ({ user }) => {
           <div className="text-3xl font-black text-white mt-3">
             {stats.totalStudents}
           </div>
-          <div className="text-xs text-slate-400 mt-1">Semester 6 Batch</div>
+          <div className="text-xs text-slate-400 mt-1">Semester 5 Batch</div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-800">
@@ -598,7 +598,7 @@ export const HodDashboard = ({ user }) => {
                                 <div className="min-w-0">
                                   <div className="font-bold text-white text-xs leading-tight whitespace-nowrap">{item.student_name}</div>
                                   <div className="flex items-center gap-1.5 mt-0.5">
-                                    <span className="text-[10px] text-slate-400 whitespace-nowrap">Semester 6</span>
+                                    <span className="text-[10px] text-slate-400 whitespace-nowrap">Semester 5</span>
                                     <span className="text-slate-600">•</span>
                                     <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded whitespace-nowrap ${
                                       studentClass === 'Class A' || studentClass === 'Batch A'
