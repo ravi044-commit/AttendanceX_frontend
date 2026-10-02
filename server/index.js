@@ -11,8 +11,10 @@ import {
   runQuery,
   calculatePercentage,
   calculateWeightedScore,
-  getStudentBatch
+  getStudentBatch,
+  cleanupDuplicateDailySessions
 } from './database.js';
+import { getAvatarUrl, cleanAvatarUrl } from './avatarUtils.js';
 
 dotenv.config();
 
@@ -111,8 +113,19 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
+    let cleanEmail = email.trim();
+    if (role === 'student') {
+      if (!cleanEmail.includes('@')) {
+        cleanEmail = `${cleanEmail}@attendancex.edu`;
+      } else if (cleanEmail.toLowerCase().endsWith('@attedance.edu')) {
+        cleanEmail = cleanEmail.replace(/@attedance\.edu$/i, '@attendancex.edu');
+      } else if (cleanEmail.toLowerCase().endsWith('@attendance.edu')) {
+        cleanEmail = cleanEmail.replace(/@attendance\.edu$/i, '@attendancex.edu');
+      }
+    }
+
     let query = 'SELECT * FROM users WHERE LOWER(email) = LOWER(?)';
-    const params = [email.trim()];
+    const params = [cleanEmail];
 
     // If role is specified, verify matching role
     if (role) {
@@ -405,9 +418,14 @@ app.get('/api/students/:uid', async (req, res) => {
     }
 
     const history = await allQuery(`
-      SELECT * FROM attendance_records
-      WHERE student_uid = ?
-      ORDER BY date DESC, timestamp DESC
+      SELECT ar.*,
+        (SELECT COUNT(*) FROM attendance_records sub 
+         WHERE sub.date = ar.date AND sub.subject_name = ar.subject_name AND sub.session_type = ar.session_type AND sub.status = 'Present') as session_present_count,
+        (SELECT COUNT(*) FROM attendance_records sub 
+         WHERE sub.date = ar.date AND sub.subject_name = ar.subject_name AND sub.session_type = ar.session_type) as session_total_students
+      FROM attendance_records ar
+      WHERE ar.student_uid = ?
+      ORDER BY ar.date DESC, ar.timestamp DESC
       LIMIT 100
     `, [uid]);
 
@@ -458,7 +476,7 @@ app.post('/api/students', async (req, res) => {
     const dept = department || 'Computer Department';
     const timestamp = Date.now().toString().slice(-4);
     const uid = `STU-COMP-${new Date().getFullYear()}-${timestamp}`;
-    const photo = student_photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
+    const photo = cleanAvatarUrl(student_photo, name);
     const studentEmail = email || `${name.toLowerCase().replace(/\s+/g, '.')}.comp@attendancex.edu`;
 
     // Create user account for student
@@ -590,7 +608,7 @@ app.post('/api/users', async (req, res) => {
     const uid = `${prefix}-COMP-${timestamp}`;
     const hashedPassword = bcrypt.hashSync(password, 10);
     const dept = department || 'Computer Department';
-    const defaultAvatar = avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
+    const defaultAvatar = cleanAvatarUrl(avatar, name, null, role === 'faculty' || role === 'hod');
 
     const result = await runQuery(`
       INSERT INTO users (uid, name, email, password, role, department, phone, avatar)
@@ -695,14 +713,15 @@ app.post('/api/attendance/mark', async (req, res) => {
       });
     }
 
-    // 2. SINGLE VALID SESSION PER DATE: If previous records exist for this session on this date, replace cleanly
+    // 2. STRICT 1 SESSION PER DATE RULE: If previous records exist on this date for this department,
+    // overwrite them completely so there is strictly 1 official session per day.
     const existingRecords = await allQuery(`
       SELECT * FROM attendance_records
-      WHERE date = ? AND subject_name = ? AND session_type = ? AND department = ?
-    `, [date, subject_name, session_type, department]);
+      WHERE date = ? AND department = ?
+    `, [date, department]);
 
     if (existingRecords && existingRecords.length > 0) {
-      // Revert student totals before inserting updated session
+      // Revert previous student totals before inserting the new session
       for (const prev of existingRecords) {
         const student = await getQuery('SELECT * FROM students WHERE uid = ?', [prev.student_uid]);
         if (student) {
@@ -719,19 +738,26 @@ app.post('/api/attendance/mark', async (req, res) => {
             if (prev.status === 'Present') labPres = Math.max(0, labPres - 1);
           }
 
+          const totalPres = lecPres + labPres;
+          const totalTot = lecTot + labTot;
+          const pct = calculatePercentage(totalPres, totalTot);
+          const weightedPct = calculateWeightedScore(totalTot > 0 ? totalPres / totalTot : 0);
+
           await runQuery(`
             UPDATE students
             SET lecture_present = ?, lecture_total = ?,
-                lab_present = ?, lab_total = ?
+                lab_present = ?, lab_total = ?,
+                total_classes_present = ?, total_classes_conducted = ?,
+                percentage = ?, weighted_percentage = ?
             WHERE uid = ?
-          `, [lecPres, lecTot, labPres, labTot, prev.student_uid]);
+          `, [lecPres, lecTot, labPres, labTot, totalPres, totalTot, pct, weightedPct, prev.student_uid]);
         }
       }
 
       await runQuery(`
         DELETE FROM attendance_records
-        WHERE date = ? AND subject_name = ? AND session_type = ? AND department = ?
-      `, [date, subject_name, session_type, department]);
+        WHERE date = ? AND department = ?
+      `, [date, department]);
     }
 
     let presentCount = 0;

@@ -5,8 +5,12 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js"
+    "start": "npm --prefix server start",
+    "dev": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "server": "npm --prefix server start",
+    "client": "npm --prefix client run dev",
+    "test": "npm --prefix server test"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

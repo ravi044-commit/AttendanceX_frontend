@@ -1,6 +1,7 @@
 // restore-missing-students.js
 import { db, runQuery, getQuery, allQuery, rawStudentList } from './database.js';
 import bcrypt from 'bcryptjs';
+import { getAvatarUrl } from './avatarUtils.js';
 
 // Helper to check if a student already exists
 const studentExists = async (enrol) => {
@@ -20,7 +21,7 @@ const studentExists = async (enrol) => {
         const formattedUid = `STU-COMP-${String(s.uid).padStart(3, '0')}`;
         const email = `${s.enrollment_number}@attendancex.edu`;
         const passwordHash = bcrypt.hashSync(s.enrollment_number, 10);
-        const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(s.name)}`;
+        const avatar = getAvatarUrl(s.name);
 
         const userRes = await runQuery(
             `INSERT INTO users (uid, name, email, password, role, department, avatar)

@@ -2,6 +2,7 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
+import { getAvatarUrl } from './avatarUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +36,7 @@ async function restoreStudent() {
   const name = 'SHIR DHRUV RAMESHBHAI';
   const email = `${enrolment}@attendancex.edu`;
   const hashedPassword = bcrypt.hashSync(enrolment, 10);
-  const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
+  const avatar = getAvatarUrl(name);
 
   // 1. Create User
   const userRes = await run(`

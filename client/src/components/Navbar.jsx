@@ -1,5 +1,6 @@
 import React from 'react';
 import { Shield, GraduationCap, BookOpen, Users, LogOut, Sparkles, UserCheck } from 'lucide-react';
+import { cleanAvatarUrl } from '../utils/avatarUtils';
 
 export const Navbar = ({
   user,
@@ -82,7 +83,7 @@ export const Navbar = ({
           {user && (
             <div className="flex items-center gap-3 mr-2">
               <img
-                src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.name)}`}
+                src={cleanAvatarUrl(user.avatar, user.name, null, user.role === 'faculty' || user.role === 'hod')}
                 alt={user.name}
                 className="w-9 h-9 rounded-full ring-2 ring-indigo-500/40 object-cover bg-slate-800"
               />

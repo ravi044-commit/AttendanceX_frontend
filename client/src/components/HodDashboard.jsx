@@ -7,6 +7,8 @@ import {
   Eye, X, FileSpreadsheet, Printer, XCircle
 } from 'lucide-react';
 import { api } from '../utils/api';
+import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
+import { cleanAvatarUrl } from '../utils/avatarUtils';
 
 export const HodDashboard = ({ user }) => {
   const [data, setData] = useState(null);
@@ -152,16 +154,9 @@ export const HodDashboard = ({ user }) => {
 
   const exportSessionCsv = () => {
     if (!sessionRecords || sessionRecords.length === 0) return;
-    const headers = ['Enrolment Number', 'Student Name', 'UID', 'Batch', 'Subject', 'Type', 'Status', 'Faculty In-Charge', 'Marked By Method', 'Date'];
+    const headers = ['Enrolment Number', 'Student Name', 'UID', 'Class', 'Subject', 'Type', 'Status', 'Faculty In-Charge', 'Marked By Method', 'Date'];
     const rows = sessionRecords.map(r => {
-      let num = null;
-      const matchUid = (r.student_uid || '').match(/(\d+)$/);
-      if (matchUid) num = parseInt(matchUid[1], 10);
-      if (!num && r.enrolment_number) {
-        const mEnroll = r.enrolment_number.match(/(\d+)$/);
-        if (mEnroll) num = parseInt(mEnroll[1], 10);
-      }
-      const batchStr = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
+      const batchStr = getStudentClass(r.enrolment_number, r.student_uid);
 
       return [
         `"${r.enrolment_number || ''}"`,
@@ -506,12 +501,12 @@ export const HodDashboard = ({ user }) => {
                   })}
                 </div>
 
-                {/* Batch Filter Tabs (Batch A: 1-63, Batch B: 64+) */}
+                {/* Class Filter Tabs (Enrollment 1-63 = Class A, 64+ = Class B) */}
                 <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 w-fit">
                   {[
-                    { id: 'All', label: 'All Batches' },
-                    { id: 'Batch A', label: 'Batch A (1-63)' },
-                    { id: 'Batch B', label: 'Batch B (64+)' }
+                    { id: 'All', label: 'All Classes' },
+                    { id: 'Class A', label: 'Class A (1-63)' },
+                    { id: 'Class B', label: 'Class B (64+)' }
                   ].map((b) => (
                     <button
                       key={b.id}
@@ -550,17 +545,8 @@ export const HodDashboard = ({ user }) => {
               ) : (() => {
                 const filtered = sessionRecords.filter((r) => {
                   const matchesStatus = sessionFilterStatus === 'All' || r.status === sessionFilterStatus;
-                  
-                  // Extract roll number to calculate Batch A (1-63) vs Batch B (64+)
-                  let num = null;
-                  const matchUid = (r.student_uid || '').match(/(\d+)$/);
-                  if (matchUid) num = parseInt(matchUid[1], 10);
-                  if (!num && r.enrolment_number) {
-                    const mEnroll = r.enrolment_number.match(/(\d+)$/);
-                    if (mEnroll) num = parseInt(mEnroll[1], 10);
-                  }
-                  const rBatch = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
-                  const matchesBatch = sessionBatchFilter === 'All' || rBatch === sessionBatchFilter;
+                  const rClass = getStudentClass(r.enrolment_number, r.student_uid);
+                  const matchesBatch = matchesClassFilter(rClass, sessionBatchFilter);
 
                   const q = sessionSearchQuery.toLowerCase();
                   const matchesSearch =
@@ -592,19 +578,8 @@ export const HodDashboard = ({ user }) => {
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
                       {filtered.map((item, idx) => {
-                        const isPresent = item.status === 'Present';
-                        const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(item.student_name || 'Student')}`;
-
-                        // Calculate Roll Number & Batch A (1-63) vs Batch B (64+)
-                        let num = null;
-                        const matchUid = (item.student_uid || '').match(/(\d+)$/);
-                        if (matchUid) num = parseInt(matchUid[1], 10);
-                        if (!num && item.enrolment_number) {
-                          const mEnroll = item.enrolment_number.match(/(\d+)$/);
-                          if (mEnroll) num = parseInt(mEnroll[1], 10);
-                        }
-                        const studentBatch = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
-
+                        const avatar = cleanAvatarUrl(item.student_photo, item.student_name || 'Student', null, false);
+                        const studentClass = getStudentClass(item.enrolment_number, item.student_uid);
                         const facultyName = item.faculty_in_charge || 'C.G.Ajudiya';
 
                         return (
@@ -625,11 +600,11 @@ export const HodDashboard = ({ user }) => {
                                     <span className="text-[10px] text-slate-400 whitespace-nowrap">Semester 6</span>
                                     <span className="text-slate-600">•</span>
                                     <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded whitespace-nowrap ${
-                                      studentBatch === 'Batch A'
+                                      studentClass === 'Class A' || studentClass === 'Batch A'
                                         ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                                         : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                                     }`}>
-                                      {studentBatch}
+                                      {studentClass}
                                     </span>
                                   </div>
                                 </div>
@@ -912,7 +887,7 @@ export const HodDashboard = ({ user }) => {
                     className="p-3 rounded-xl bg-slate-900/90 border border-amber-500/40 flex items-center gap-3"
                   >
                     <img
-                      src={s.student_photo}
+                      src={cleanAvatarUrl(s.student_photo, s.name, null, false)}
                       alt={s.name}
                       className="w-10 h-10 rounded-full object-cover"
                     />
@@ -1116,7 +1091,7 @@ export const HodDashboard = ({ user }) => {
                     <td className="px-6 py-4 min-w-[200px]">
                       <div className="flex items-center gap-3">
                         <img
-                          src={s.student_photo}
+                          src={cleanAvatarUrl(s.student_photo, s.name, null, false)}
                           alt={s.name}
                           className="w-9 h-9 rounded-full object-cover bg-slate-800 shrink-0"
                         />
@@ -1160,7 +1135,7 @@ export const HodDashboard = ({ user }) => {
               className="glass-panel p-6 rounded-2xl border border-slate-800 flex items-start gap-4"
             >
               <img
-                src={f.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(f.name)}`}
+                src={cleanAvatarUrl(f.avatar, f.name, null, true)}
                 alt={f.name}
                 className="w-14 h-14 rounded-2xl object-cover ring-2 ring-purple-500/40"
               />
@@ -1206,7 +1181,7 @@ export const HodDashboard = ({ user }) => {
                 <div key={s.uid} className="p-6 flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <img
-                      src={s.student_photo}
+                      src={cleanAvatarUrl(s.student_photo, s.name, null, false)}
                       alt={s.name}
                       className="w-12 h-12 rounded-full object-cover"
                     />

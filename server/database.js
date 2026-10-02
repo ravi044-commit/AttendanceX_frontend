@@ -2,6 +2,7 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
+import { getAvatarUrl } from './avatarUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -154,18 +155,35 @@ export const rawStudentList = [
 ];
 
 export const getStudentBatch = (uid, enrolment) => {
-  let num = null;
-  if (typeof uid === 'number') num = uid;
-  else if (typeof uid === 'string') {
-    const match = uid.match(/(\d+)$/);
-    if (match) num = parseInt(match[1], 10);
+  let roll = null;
+  // 1. Enrollment number takes absolute priority (GTU 12-digit format, e.g. 246250307001 to 246250307118)
+  if (enrolment) {
+    const clean = String(enrolment).trim();
+    if (clean.startsWith('24')) {
+      const match = clean.match(/(\d{3})$/);
+      if (match) roll = parseInt(match[1], 10);
+    } else {
+      // Non-24 (e.g. 236250307037 or D2D remaining students) go to Class B
+      return 'Class B';
+    }
   }
-  if (!num && enrolment) {
-    const match = enrolment.match(/(\d+)$/);
-    if (match) num = parseInt(match[1], 10);
+
+  // 2. Fallback to UID if enrollment is not provided
+  if (roll === null && uid) {
+    const match = String(uid).match(/(\d+)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      // In the department roster, students 1 to 51 have enrollment numbers 1 to 63 (Class A)
+      if (num >= 1 && num <= 51) return 'Class A';
+      return 'Class B';
+    }
   }
-  if (num && num >= 1 && num <= 63) return 'Batch A';
-  return 'Batch B';
+
+  // Enrollment number 1 to 63 is Class A, 64 to remaining is Class B
+  if (roll !== null && roll >= 1 && roll <= 63) {
+    return 'Class A';
+  }
+  return 'Class B';
 };
 
 export const initDatabase = async () => {
@@ -304,6 +322,9 @@ export const initDatabase = async () => {
     console.log('Seeding initial data for Computer Department and Roles...');
     await seedInitialData();
   }
+
+  // Ensure strict 1 session per date rule across all existing records
+  await cleanupDuplicateDailySessions();
 };
 
 const seedInitialData = async () => {
@@ -325,7 +346,7 @@ const seedInitialData = async () => {
       role: 'admin',
       department: 'Computer Department',
       phone: '',
-      avatar: ''
+      avatar: getAvatarUrl('Ravi', 'male', true)
     },
     {
       uid: 'HOD-COMP-01',
@@ -335,7 +356,7 @@ const seedInitialData = async () => {
       role: 'hod',
       department: 'Computer Department',
       phone: '',
-      avatar: ''
+      avatar: getAvatarUrl('C.G.Ajudiya', 'male', true)
     },
     {
       uid: 'FAC-COMP-101',
@@ -345,7 +366,7 @@ const seedInitialData = async () => {
       role: 'faculty',
       department: 'Computer Department',
       phone: '',
-      avatar: ''
+      avatar: getAvatarUrl('J.D.Vadalia', 'male', true)
     },
     {
       uid: 'FAC-COMP-102',
@@ -355,7 +376,7 @@ const seedInitialData = async () => {
       role: 'faculty',
       department: 'Computer Department',
       phone: '',
-      avatar: ''
+      avatar: getAvatarUrl('P.V.Patel', 'male', true)
     },
     {
       uid: 'FAC-COMP-103',
@@ -365,7 +386,7 @@ const seedInitialData = async () => {
       role: 'faculty',
       department: 'Computer Department',
       phone: '',
-      avatar: ''
+      avatar: getAvatarUrl('J.V.Shparia', 'male', true)
     },
     {
       uid: 'FAC-COMP-104',
@@ -375,7 +396,7 @@ const seedInitialData = async () => {
       role: 'faculty',
       department: 'Computer Department',
       phone: '',
-      avatar: ''
+      avatar: getAvatarUrl('Shubham', 'male', true)
     }
   ];
 
@@ -414,7 +435,7 @@ const seedInitialData = async () => {
     const formattedUid = `STU-COMP-${String(s.uid).padStart(3, '0')}`;
     const email = `${s.enrollment_number}@attendancex.edu`;
     const studentPassword = hashPass(s.enrollment_number);
-    const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(s.name)}`;
+    const avatar = getAvatarUrl(s.name);
 
     const isAbsent = s.status === 'Absent';
     const lecTotal = 30;
@@ -434,7 +455,7 @@ const seedInitialData = async () => {
       VALUES (?, ?, ?, ?, 'student', 'Computer Department', ?)
     `, [formattedUid, s.name, email, studentPassword, avatar]);
 
-    const batchName = s.uid <= 63 ? 'Batch A' : 'Batch B';
+    const batchName = getStudentBatch(s.uid, s.enrollment_number);
 
     await runQuery(`
       INSERT INTO students (
@@ -451,32 +472,110 @@ const seedInitialData = async () => {
     ]);
   }
 
-  // 5. Seed Attendance Records for recent dates
-  const dates = ['2026-08-22', '2026-08-23', '2026-08-24', '2026-08-25'];
-  const subjects = [
-    { name: 'IOT - Internet of Things (Lecture)', type: 'Lecture', faculty: 'C.G.Ajudiya' },
-    { name: 'ST - Software Testing (Lecture)', type: 'Lecture', faculty: 'J.D.Vadalia' },
-    { name: 'IS - Information Security (Lecture)', type: 'Lecture', faculty: 'P.V.Patel' },
-    { name: 'CHSM - Computer Hardware Architecture and System Maintenance (Lecture)', type: 'Lecture', faculty: 'J.V.Shparia' }
+  // 5. Seed Attendance Records (Strictly 1 official session per date)
+  const dailySeedSessions = [
+    { date: '2026-08-22', name: 'IOT - Internet of Things (Lecture)', type: 'Lecture', faculty: 'C.G.Ajudiya' },
+    { date: '2026-08-23', name: 'ST - Software Testing (Lecture)', type: 'Lecture', faculty: 'J.D.Vadalia' },
+    { date: '2026-08-24', name: 'IS - Information Security (Lecture)', type: 'Lecture', faculty: 'P.V.Patel' },
+    { date: '2026-08-25', name: 'CHSM - Computer Hardware Architecture and System Maintenance (Lecture)', type: 'Lecture', faculty: 'J.V.Shparia' }
   ];
 
-  for (const date of dates) {
-    for (const sub of subjects) {
-      for (const s of rawStudentList) {
-        const formattedUid = `STU-COMP-${String(s.uid).padStart(3, '0')}`;
-        const isPresent = s.status === 'Present' ? (Math.random() > 0.08) : (Math.random() > 0.6);
-        const status = isPresent ? 'Present' : 'Absent';
+  for (const session of dailySeedSessions) {
+    for (const s of rawStudentList) {
+      const formattedUid = `STU-COMP-${String(s.uid).padStart(3, '0')}`;
+      const isPresent = s.status === 'Present' ? (Math.random() > 0.08) : (Math.random() > 0.6);
+      const status = isPresent ? 'Present' : 'Absent';
 
-        await runQuery(`
-          INSERT INTO attendance_records (
-            class_id, student_uid, student_name, enrolment_number,
-            department, date, session_type, subject_name, status, marked_by
-          )
-          VALUES (1, ?, ?, ?, 'Computer Department', ?, ?, ?, ?, ?)
-        `, [formattedUid, s.name, s.enrollment_number, date, sub.type, sub.name, status, sub.faculty]);
-      }
+      await runQuery(`
+        INSERT INTO attendance_records (
+          class_id, student_uid, student_name, enrolment_number,
+          department, date, session_type, subject_name, status, marked_by
+        )
+        VALUES (1, ?, ?, ?, 'Computer Department', ?, ?, ?, ?, ?)
+      `, [formattedUid, s.name, s.enrollment_number, session.date, session.type, session.name, status, session.faculty]);
     }
   }
 
   console.log('Database initialized with 99 students successfully!');
 };
+
+// Cleanup any existing duplicate sessions for any date so strictly 1 session per day exists
+export const cleanupDuplicateDailySessions = async () => {
+  try {
+    const duplicateDates = await allQuery(`
+      SELECT date, department, COUNT(DISTINCT subject_name || '_' || session_type) as session_count
+      FROM attendance_records
+      GROUP BY date, department
+      HAVING session_count > 1
+    `);
+
+    if (!duplicateDates || duplicateDates.length === 0) return;
+
+    for (const d of duplicateDates) {
+      console.log(`[Deduplicate] Found ${d.session_count} sessions on ${d.date} in ${d.department}. Enforcing 1 session per date...`);
+
+      // Find all distinct sessions for this date ordered by latest record ID DESC
+      const sessions = await allQuery(`
+        SELECT subject_name, session_type, MAX(id) as max_id
+        FROM attendance_records
+        WHERE date = ? AND department = ?
+        GROUP BY subject_name, session_type
+        ORDER BY max_id DESC
+      `, [d.date, d.department]);
+
+      if (sessions && sessions.length > 1) {
+        // Keep the latest session (index 0) and revert/delete older duplicate sessions (index 1+)
+        const keepSession = sessions[0];
+        const sessionsToRemove = sessions.slice(1);
+
+        for (const rem of sessionsToRemove) {
+          console.log(`[Deduplicate] Removing older duplicate session: ${rem.subject_name} (${rem.session_type}) for date ${d.date}`);
+          const recordsToRemove = await allQuery(`
+            SELECT * FROM attendance_records
+            WHERE date = ? AND department = ? AND subject_name = ? AND session_type = ?
+          `, [d.date, d.department, rem.subject_name, rem.session_type]);
+
+          for (const prev of recordsToRemove) {
+            const student = await getQuery('SELECT * FROM students WHERE uid = ?', [prev.student_uid]);
+            if (student) {
+              let lecPres = student.lecture_present || 0;
+              let lecTot = student.lecture_total || 0;
+              let labPres = student.lab_present || 0;
+              let labTot = student.lab_total || 0;
+
+              if (prev.session_type === 'Lecture') {
+                lecTot = Math.max(0, lecTot - 1);
+                if (prev.status === 'Present') lecPres = Math.max(0, lecPres - 1);
+              } else {
+                labTot = Math.max(0, labTot - 1);
+                if (prev.status === 'Present') labPres = Math.max(0, labPres - 1);
+              }
+
+              const totalPres = lecPres + labPres;
+              const totalTot = lecTot + labTot;
+              const pct = calculatePercentage(totalPres, totalTot);
+              const weightedPct = calculateWeightedScore(totalTot > 0 ? totalPres / totalTot : 0);
+
+              await runQuery(`
+                UPDATE students
+                SET lecture_present = ?, lecture_total = ?,
+                    lab_present = ?, lab_total = ?,
+                    total_classes_present = ?, total_classes_conducted = ?,
+                    percentage = ?, weighted_percentage = ?
+                WHERE uid = ?
+              `, [lecPres, lecTot, labPres, labTot, totalPres, totalTot, pct, weightedPct, prev.student_uid]);
+            }
+          }
+
+          await runQuery(`
+            DELETE FROM attendance_records
+            WHERE date = ? AND department = ? AND subject_name = ? AND session_type = ?
+          `, [d.date, d.department, rem.subject_name, rem.session_type]);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Could not run cleanupDuplicateDailySessions:', err.message);
+  }
+};
+

@@ -5,6 +5,7 @@ import {
   AlertTriangle, RefreshCw, Sparkles, PieChart, Award
 } from 'lucide-react';
 import { api } from '../utils/api';
+import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
 
 export const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
@@ -71,7 +72,7 @@ export const AdminDashboard = () => {
           name: formData.name,
           email: formData.email,
           enrolment_number: formData.enrolment_number || `2024COMP${Date.now().toString().slice(-4)}`,
-          student_photo: formData.student_photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(formData.name)}`,
+          student_photo: cleanAvatarUrl(formData.student_photo, formData.name, null, false),
           department: formData.department,
           phone: formData.phone,
           status: formData.status
@@ -84,7 +85,7 @@ export const AdminDashboard = () => {
           role: formData.role,
           department: formData.department,
           phone: formData.phone,
-          avatar: formData.student_photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(formData.name)}`
+          avatar: cleanAvatarUrl(formData.student_photo, formData.name, null, formData.role === 'faculty' || formData.role === 'hod')
         });
       }
 
@@ -346,7 +347,7 @@ export const AdminDashboard = () => {
                       <td className="px-6 py-4 min-w-[220px]">
                         <div className="flex items-center gap-3">
                           <img
-                            src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.name)}`}
+                            src={cleanAvatarUrl(u.avatar, u.name, null, u.role === 'faculty' || u.role === 'hod')}
                             alt={u.name}
                             className="w-10 h-10 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700 shrink-0"
                           />

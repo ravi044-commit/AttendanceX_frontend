@@ -6,6 +6,8 @@ import {
   ShieldAlert, AlertCircle
 } from 'lucide-react';
 import { api } from '../utils/api';
+import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
+import { cleanAvatarUrl } from '../utils/avatarUtils';
 
 export const FacultyDashboard = ({ user }) => {
   const [activeTab, setActiveTab] = useState('take'); // 'take' or 'history'
@@ -233,19 +235,13 @@ export const FacultyDashboard = ({ user }) => {
   };
 
   // Filtered lists
-  const filteredRoster = students.filter(s => {
+  const filteredRoster = students.filter((s) => {
     const matchesSearch = s.name.toLowerCase().includes(searchRoster.toLowerCase()) ||
-      s.enrolment_number.toLowerCase().includes(searchRoster.toLowerCase());
-    
-    let num = null;
-    const matchUid = (s.uid || '').match(/(\d+)$/);
-    if (matchUid) num = parseInt(matchUid[1], 10);
-    if (!num && s.enrolment_number) {
-      const mEnroll = s.enrolment_number.match(/(\d+)$/);
-      if (mEnroll) num = parseInt(mEnroll[1], 10);
-    }
-    const sBatch = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
-    const matchesBatch = batchFilter === 'All' || sBatch === batchFilter;
+      s.enrolment_number.toLowerCase().includes(searchRoster.toLowerCase()) ||
+      s.uid.toLowerCase().includes(searchRoster.toLowerCase());
+
+    const sClass = getStudentClass(s.enrolment_number, s.uid);
+    const matchesBatch = matchesClassFilter(sClass, batchFilter);
 
     return matchesSearch && matchesBatch;
   });
@@ -255,15 +251,8 @@ export const FacultyDashboard = ({ user }) => {
       r.enrolment_number.toLowerCase().includes(historySearch.toLowerCase());
     const matchesStatus = historyFilterStatus === 'All' || r.status === historyFilterStatus;
 
-    let num = null;
-    const matchUid = (r.student_uid || '').match(/(\d+)$/);
-    if (matchUid) num = parseInt(matchUid[1], 10);
-    if (!num && r.enrolment_number) {
-      const mEnroll = r.enrolment_number.match(/(\d+)$/);
-      if (mEnroll) num = parseInt(mEnroll[1], 10);
-    }
-    const rBatch = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
-    const matchesBatch = historyBatchFilter === 'All' || rBatch === historyBatchFilter;
+    const rClass = getStudentClass(r.enrolment_number, r.student_uid);
+    const matchesBatch = matchesClassFilter(rClass, historyBatchFilter);
 
     return matchesSearch && matchesStatus && matchesBatch;
   });
@@ -504,8 +493,29 @@ export const FacultyDashboard = ({ user }) => {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="relative w-48 sm:w-64">
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Class Filter Tabs (Enrollment 1-63 = Class A, 64+ = Class B) */}
+                <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                  {[
+                    { id: 'All', label: 'All Students' },
+                    { id: 'Class A', label: 'Class A (1-63)' },
+                    { id: 'Class B', label: 'Class B (64+)' }
+                  ].map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => setBatchFilter(b.id)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                        batchFilter === b.id
+                          ? 'bg-indigo-600 text-white shadow-md'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative w-40 sm:w-56">
                   <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
                   <input
                     type="text"
@@ -544,7 +554,7 @@ export const FacultyDashboard = ({ user }) => {
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <img
-                        src={student.student_photo}
+                        src={cleanAvatarUrl(student.student_photo, student.name, null, false)}
                         alt={student.name}
                         className="w-10 h-10 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700 shrink-0"
                       />
@@ -764,9 +774,9 @@ export const FacultyDashboard = ({ user }) => {
                     {/* Batch Filter Tabs (Batch A: 1-63, Batch B: 64+) */}
                     <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800">
                       {[
-                        { id: 'All', label: 'All Batches' },
-                        { id: 'Batch A', label: 'Batch A (1-63)' },
-                        { id: 'Batch B', label: 'Batch B (64+)' }
+                        { id: 'All', label: 'All Classes' },
+                        { id: 'Class A', label: 'Class A (1-63)' },
+                        { id: 'Class B', label: 'Class B (64+)' }
                       ].map((b) => (
                         <button
                           key={b.id}
@@ -796,7 +806,7 @@ export const FacultyDashboard = ({ user }) => {
                       <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800 sticky top-0">
                         <tr>
                           <th className="px-6 py-3 min-w-[180px]">Student Name</th>
-                          <th className="px-6 py-3 whitespace-nowrap">Batch & Division</th>
+                          <th className="px-6 py-3 whitespace-nowrap">Class & Division</th>
                           <th className="px-6 py-3 whitespace-nowrap">Enrollment Number</th>
                           <th className="px-6 py-3 whitespace-nowrap">UID</th>
                           <th className="px-6 py-3 text-right whitespace-nowrap">Session Status</th>
@@ -812,15 +822,7 @@ export const FacultyDashboard = ({ user }) => {
                         ) : (
                           filteredSessionRecords.map((rec) => {
                             const isPresent = rec.status === 'Present';
-                            
-                            let num = null;
-                            const matchUid = (rec.student_uid || '').match(/(\d+)$/);
-                            if (matchUid) num = parseInt(matchUid[1], 10);
-                            if (!num && rec.enrolment_number) {
-                              const mEnroll = rec.enrolment_number.match(/(\d+)$/);
-                              if (mEnroll) num = parseInt(mEnroll[1], 10);
-                            }
-                            const recBatch = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
+                            const recClass = getStudentClass(rec.enrolment_number, rec.student_uid);
 
                             return (
                               <tr key={rec.id} className="hover:bg-slate-900/40 transition-colors">
@@ -829,11 +831,11 @@ export const FacultyDashboard = ({ user }) => {
                                 </td>
                                 <td className="px-6 py-3.5">
                                   <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                    recBatch === 'Batch A'
+                                    recClass === 'Class A' || recClass === 'Batch A'
                                       ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                                       : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                                   }`}>
-                                    {recBatch}
+                                    {recClass}
                                   </span>
                                 </td>
                                 <td className="px-6 py-3.5 font-mono text-xs text-slate-400">

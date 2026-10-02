@@ -5,6 +5,8 @@ import {
   ChevronDown, ShieldCheck, Info, Layers, TrendingUp, ArrowRight, Eye, X, Users
 } from 'lucide-react';
 import { api } from '../utils/api';
+import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
+import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
 
 export const StudentDashboard = ({ user }) => {
   const [studentInfo, setStudentInfo] = useState(null);
@@ -83,7 +85,7 @@ export const StudentDashboard = ({ user }) => {
     name: user?.name || 'Student Member',
     uid: user?.uid || 'STU-COMP-2024-001',
     enrolment_number: '2024COMP0101',
-    student_photo: user?.avatar || 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80',
+    student_photo: cleanAvatarUrl(user?.avatar, user?.name, null, false),
     department: 'Computer Department',
     semester: 6,
     division: 'A',
@@ -212,7 +214,7 @@ export const StudentDashboard = ({ user }) => {
           <div className="flex items-center gap-5">
             <div className="relative">
               <img
-                src={s.student_photo || user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(s.name)}`}
+                src={cleanAvatarUrl(s.student_photo || user?.avatar, s.name, null, false)}
                 alt={s.name}
                 className="w-20 h-20 rounded-2xl object-cover bg-slate-800 ring-2 ring-indigo-500/50 shadow-xl"
               />
@@ -988,12 +990,12 @@ export const StudentDashboard = ({ user }) => {
                   ))}
                 </div>
 
-                {/* Batch Filter */}
+                {/* Class Filter (Enrollment 1-63 is Class A, 64+ is Class B) */}
                 <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
                   {[
-                    { id: 'All', label: 'All Batches' },
-                    { id: 'Batch A', label: 'Batch A' },
-                    { id: 'Batch B', label: 'Batch B' }
+                    { id: 'All', label: 'All Classes' },
+                    { id: 'Class A', label: 'Class A (1-63)' },
+                    { id: 'Class B', label: 'Class B (64+)' }
                   ].map((b) => (
                     <button
                       key={b.id}
@@ -1033,16 +1035,8 @@ export const StudentDashboard = ({ user }) => {
               ) : (() => {
                 const filtered = sessionRecords.filter((r) => {
                   const matchesStatus = modalFilterStatus === 'All' || r.status === modalFilterStatus;
-
-                  let num = null;
-                  const matchUid = (r.student_uid || '').match(/(\d+)$/);
-                  if (matchUid) num = parseInt(matchUid[1], 10);
-                  if (!num && r.enrolment_number) {
-                    const mEnroll = r.enrolment_number.match(/(\d+)$/);
-                    if (mEnroll) num = parseInt(mEnroll[1], 10);
-                  }
-                  const rBatch = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
-                  const matchesBatch = modalBatchFilter === 'All' || rBatch === modalBatchFilter;
+                  const rClass = getStudentClass(r.enrolment_number, r.student_uid);
+                  const matchesBatch = matchesClassFilter(rClass, modalBatchFilter);
 
                   const q = modalSearchQuery.toLowerCase();
                   const matchesSearch =
@@ -1088,17 +1082,10 @@ export const StudentDashboard = ({ user }) => {
                         <tbody className="divide-y divide-slate-800/60">
                           {filtered.map((item, idx) => {
                             const isPresent = item.status === 'Present';
-                            const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(item.student_name || 'Student')}`;
+                            const avatar = cleanAvatarUrl(item.student_photo, item.student_name || 'Student', null, false);
                             const isCurrentUser = (item.student_uid === s.uid) || (item.enrolment_number === s.enrolment_number);
 
-                            let num = null;
-                            const matchUid = (item.student_uid || '').match(/(\d+)$/);
-                            if (matchUid) num = parseInt(matchUid[1], 10);
-                            if (!num && item.enrolment_number) {
-                              const mEnroll = item.enrolment_number.match(/(\d+)$/);
-                              if (mEnroll) num = parseInt(mEnroll[1], 10);
-                            }
-                            const studentBatch = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
+                            const studentClass = getStudentClass(item.enrolment_number, item.student_uid);
 
                             return (
                               <tr
@@ -1137,11 +1124,11 @@ export const StudentDashboard = ({ user }) => {
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                    studentBatch === 'Batch A'
+                                    studentClass === 'Class A' || studentClass === 'Batch A'
                                       ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                                       : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                                   }`}>
-                                    {studentBatch}
+                                    {studentClass}
                                   </span>
                                 </td>
                                 <td className="px-4 py-3 text-right whitespace-nowrap">
