@@ -1168,20 +1168,34 @@ app.get('/api/attendance/lock-status', async (req, res) => {
       return res.status(400).json({ error: 'Date query param is required' });
     }
 
+    // Auto cleanup any duplicate sessions on this date so strictly 1 session survives
+    await cleanupDuplicateDailySessions();
+
     const lock = await getQuery(
       'SELECT * FROM attendance_locks WHERE date = ? AND department = ?',
       [date, department]
     );
 
-    // Also compute count of present / absent records on this date
-    const summary = await getQuery(`
-      SELECT 
-        COUNT(*) as total_records,
-        COUNT(CASE WHEN status = 'Present' THEN 1 END) as present_count,
-        COUNT(CASE WHEN status = 'Absent' THEN 1 END) as absent_count
+    // Compute count of present / absent records on this date for the single latest session
+    const latestSession = await getQuery(`
+      SELECT subject_name, session_type
       FROM attendance_records
       WHERE date = ? AND department = ?
+      ORDER BY id DESC
+      LIMIT 1
     `, [date, department]);
+
+    let summary = { total_records: 0, present_count: 0, absent_count: 0 };
+    if (latestSession) {
+      summary = await getQuery(`
+        SELECT 
+          COUNT(*) as total_records,
+          COUNT(CASE WHEN status = 'Present' THEN 1 END) as present_count,
+          COUNT(CASE WHEN status = 'Absent' THEN 1 END) as absent_count
+        FROM attendance_records
+        WHERE date = ? AND department = ? AND subject_name = ? AND session_type = ?
+      `, [date, department, latestSession.subject_name, latestSession.session_type]);
+    }
 
     // Calculate default next date if not set
     const calculatedNext = computeNextDay(date);
@@ -1334,7 +1348,20 @@ app.get('/api/attendance/records', async (req, res) => {
       sql += ' AND date = ?';
       params.push(date);
     }
-    if (subject_name) {
+    if (date && !subject_name) {
+      const latestSession = await getQuery(`
+        SELECT subject_name, session_type
+        FROM attendance_records
+        WHERE date = ? AND department = ?
+        ORDER BY id DESC
+        LIMIT 1
+      `, [date, department]);
+
+      if (latestSession) {
+        sql += ' AND subject_name = ? AND session_type = ?';
+        params.push(latestSession.subject_name, latestSession.session_type);
+      }
+    } else if (subject_name) {
       sql += ' AND subject_name = ?';
       params.push(subject_name);
     }

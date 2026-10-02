@@ -578,6 +578,7 @@ export const HodDashboard = ({ user }) => {
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
                       {filtered.map((item, idx) => {
+                        const isPresent = item.status === 'Present';
                         const avatar = cleanAvatarUrl(item.student_photo, item.student_name || 'Student', null, false);
                         const studentClass = getStudentClass(item.enrolment_number, item.student_uid);
                         const facultyName = item.faculty_in_charge || 'C.G.Ajudiya';
@@ -857,14 +858,25 @@ export const HodDashboard = ({ user }) => {
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={() => setShowConfirmModal(true)}
-                  className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-sm shadow-xl shadow-purple-600/30 flex items-center gap-3 transform hover:-translate-y-0.5 transition-all"
-                >
-                  <Lock className="w-4 h-4" />
-                  <span>FINAL / FREEZE ATTENDANCE FOR {selectedDate}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  {(lockStatus?.summary?.total_records || 0) > 0 && (
+                    <button
+                      onClick={() => handleOpenSessionRoster({ date: selectedDate, is_frozen: 0, finalized_by: null, finalized_at: null, next_session_date: lockStatus.next_session_date })}
+                      className="px-5 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs sm:text-sm flex items-center gap-2 border border-slate-700 shadow-md transition-all cursor-pointer"
+                    >
+                      <Eye className="w-4 h-4 text-purple-400" />
+                      <span>View Current Session ({lockStatus?.summary?.total_records})</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowConfirmModal(true)}
+                    className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-sm shadow-xl shadow-purple-600/30 flex items-center gap-3 transform hover:-translate-y-0.5 transition-all cursor-pointer"
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span>FINAL / FREEZE ATTENDANCE FOR {selectedDate}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               )}
             </div>
           </div>
