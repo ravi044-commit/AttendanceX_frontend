@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   GraduationCap, Calendar, CheckCircle2, XCircle, Award,
   Clock, BookOpen, AlertCircle, Sparkles, Filter, Search, RefreshCw, BarChart2,
-  ChevronDown, ShieldCheck, Info, Layers, TrendingUp, ArrowRight
+  ChevronDown, ShieldCheck, Info, Layers, TrendingUp, ArrowRight, Eye, X, Users
 } from 'lucide-react';
 import { api } from '../utils/api';
 
@@ -14,6 +14,42 @@ export const StudentDashboard = ({ user }) => {
   const [filterType, setFilterType] = useState('All'); // 'All', 'Lecture', 'Lab'
   const [searchSubject, setSearchSubject] = useState('');
   const [activeInfoCard, setActiveInfoCard] = useState(null); // 'overall' | 'theory' | 'lab' | null
+
+  // View full session attendance roster state (like HOD view)
+  const [selectedSessionModal, setSelectedSessionModal] = useState(null);
+  const [sessionRecords, setSessionRecords] = useState([]);
+  const [loadingSessionRecords, setLoadingSessionRecords] = useState(false);
+  const [modalSearchQuery, setModalSearchQuery] = useState('');
+  const [modalFilterStatus, setModalFilterStatus] = useState('All'); // 'All', 'Present', 'Absent'
+  const [modalBatchFilter, setModalBatchFilter] = useState('All'); // 'All', 'Batch A', 'Batch B'
+
+  const handleOpenSessionModal = async (sessionItem) => {
+    setSelectedSessionModal(sessionItem);
+    setLoadingSessionRecords(true);
+    setModalSearchQuery('');
+    setModalFilterStatus('All');
+    setModalBatchFilter('All');
+    try {
+      let records = await api.getAttendanceRecords({
+        date: sessionItem.date,
+        subject_name: sessionItem.subject_name,
+        session_type: sessionItem.session_type,
+        department: 'Computer Department'
+      });
+      // Fallback if specific subject/session_type query returns empty
+      if (!records || records.length === 0) {
+        records = await api.getAttendanceRecords({
+          date: sessionItem.date,
+          department: 'Computer Department'
+        });
+      }
+      setSessionRecords(records || []);
+    } catch (err) {
+      console.error('Failed to load session attendance records:', err);
+    } finally {
+      setLoadingSessionRecords(false);
+    }
+  };
 
   const loadStudentData = async () => {
     setLoading(true);
@@ -802,7 +838,7 @@ export const StudentDashboard = ({ user }) => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[750px] text-left text-sm text-slate-300">
+          <table className="w-full min-w-[850px] text-left text-sm text-slate-300">
             <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800">
               <tr>
                 <th className="px-6 py-3.5 whitespace-nowrap">Date</th>
@@ -810,13 +846,14 @@ export const StudentDashboard = ({ user }) => {
                 <th className="px-6 py-3.5 whitespace-nowrap">Type</th>
                 <th className="px-6 py-3.5 whitespace-nowrap">Faculty Marked By</th>
                 <th className="px-6 py-3.5 whitespace-nowrap">Batch Present</th>
-                <th className="px-6 py-3.5 text-right whitespace-nowrap">Your Status</th>
+                <th className="px-6 py-3.5 whitespace-nowrap">Your Status</th>
+                <th className="px-6 py-3.5 text-right whitespace-nowrap">Class Attendance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {filteredHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                     No attendance records found.
                   </td>
                 </tr>
@@ -856,7 +893,7 @@ export const StudentDashboard = ({ user }) => {
                           <span className="text-slate-400">/ {totalCount} Present</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
                             isPresent
@@ -872,6 +909,16 @@ export const StudentDashboard = ({ user }) => {
                           <span>{item.status}</span>
                         </span>
                       </td>
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <button
+                          onClick={() => handleOpenSessionModal(item)}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold inline-flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 shadow-md shadow-indigo-950/40 cursor-pointer"
+                          title="Click to view all student attendance in this session"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View Attendance</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -880,6 +927,264 @@ export const StudentDashboard = ({ user }) => {
           </table>
         </div>
       </div>
+
+      {/* FULL SESSION ATTENDANCE SHEET MODAL (VIEW ALL STUDENTS LIKE HOD) */}
+      {selectedSessionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden my-auto animate-fadeIn">
+            
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-slate-800 flex items-start sm:items-center justify-between gap-4 bg-slate-950/60">
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono">
+                    {selectedSessionModal.date}
+                  </span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                    selectedSessionModal.session_type === 'Lab'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                  }`}>
+                    {selectedSessionModal.session_type}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    Faculty: <strong className="text-slate-200">{selectedSessionModal.marked_by}</strong>
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-black text-white">
+                  {selectedSessionModal.subject_name}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Full student attendance register for this official session
+                </p>
+              </div>
+
+              <button
+                onClick={() => setSelectedSessionModal(null)}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors shrink-0 cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Stats & Filters Bar */}
+            <div className="p-4 border-b border-slate-800 bg-slate-900/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Status Filter */}
+                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                  {['All', 'Present', 'Absent'].map((st) => (
+                    <button
+                      key={st}
+                      onClick={() => setModalFilterStatus(st)}
+                      className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                        modalFilterStatus === st
+                          ? 'bg-indigo-600 text-white shadow-md'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Batch Filter */}
+                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                  {[
+                    { id: 'All', label: 'All Batches' },
+                    { id: 'Batch A', label: 'Batch A' },
+                    { id: 'Batch B', label: 'Batch B' }
+                  ].map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => setModalBatchFilter(b.id)}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                        modalBatchFilter === b.id
+                          ? 'bg-indigo-600 text-white shadow-md'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
+                <input
+                  type="text"
+                  value={modalSearchQuery}
+                  onChange={(e) => setModalSearchQuery(e.target.value)}
+                  placeholder="Search classmate..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            {/* Students List Table */}
+            <div className="overflow-y-auto flex-1 p-2 sm:p-4">
+              {loadingSessionRecords ? (
+                <div className="py-20 flex flex-col items-center justify-center gap-3">
+                  <RefreshCw className="w-7 h-7 text-indigo-400 animate-spin" />
+                  <span className="text-xs text-slate-400 font-semibold">Loading student roll call...</span>
+                </div>
+              ) : (() => {
+                const filtered = sessionRecords.filter((r) => {
+                  const matchesStatus = modalFilterStatus === 'All' || r.status === modalFilterStatus;
+
+                  let num = null;
+                  const matchUid = (r.student_uid || '').match(/(\d+)$/);
+                  if (matchUid) num = parseInt(matchUid[1], 10);
+                  if (!num && r.enrolment_number) {
+                    const mEnroll = r.enrolment_number.match(/(\d+)$/);
+                    if (mEnroll) num = parseInt(mEnroll[1], 10);
+                  }
+                  const rBatch = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
+                  const matchesBatch = modalBatchFilter === 'All' || rBatch === modalBatchFilter;
+
+                  const q = modalSearchQuery.toLowerCase();
+                  const matchesSearch =
+                    (r.student_name || '').toLowerCase().includes(q) ||
+                    (r.enrolment_number || '').toLowerCase().includes(q) ||
+                    (r.student_uid || '').toLowerCase().includes(q);
+
+                  return matchesStatus && matchesBatch && matchesSearch;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-16 text-center text-slate-500 text-xs">
+                      No students found matching your filters.
+                    </div>
+                  );
+                }
+
+                const presentTotal = sessionRecords.filter(r => r.status === 'Present').length;
+                const absentTotal = sessionRecords.length - presentTotal;
+
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between px-2 text-xs text-slate-400 font-semibold">
+                      <span>Showing {filtered.length} students</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-emerald-400 font-bold">{presentTotal} Present</span>
+                        <span className="text-rose-400 font-bold">{absentTotal} Absent</span>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-2xl border border-slate-800">
+                      <table className="w-full min-w-[650px] text-left text-sm text-slate-300">
+                        <thead className="bg-slate-950/80 text-[11px] uppercase font-bold text-slate-400 border-b border-slate-800 sticky top-0 backdrop-blur-sm z-10">
+                          <tr>
+                            <th className="px-4 py-3 w-12 text-center">#</th>
+                            <th className="px-4 py-3 min-w-[200px]">Student Name</th>
+                            <th className="px-4 py-3 whitespace-nowrap">Enrollment & UID</th>
+                            <th className="px-4 py-3 whitespace-nowrap">Batch</th>
+                            <th className="px-4 py-3 text-right whitespace-nowrap">Attendance Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60">
+                          {filtered.map((item, idx) => {
+                            const isPresent = item.status === 'Present';
+                            const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(item.student_name || 'Student')}`;
+                            const isCurrentUser = (item.student_uid === s.uid) || (item.enrolment_number === s.enrolment_number);
+
+                            let num = null;
+                            const matchUid = (item.student_uid || '').match(/(\d+)$/);
+                            if (matchUid) num = parseInt(matchUid[1], 10);
+                            if (!num && item.enrolment_number) {
+                              const mEnroll = item.enrolment_number.match(/(\d+)$/);
+                              if (mEnroll) num = parseInt(mEnroll[1], 10);
+                            }
+                            const studentBatch = (num && num >= 1 && num <= 63) ? 'Batch A' : 'Batch B';
+
+                            return (
+                              <tr
+                                key={item.id || idx}
+                                className={`transition-colors ${
+                                  isCurrentUser ? 'bg-indigo-950/40 border-l-2 border-indigo-500' : 'hover:bg-slate-800/40'
+                                }`}
+                              >
+                                <td className="px-4 py-3 text-center text-xs text-slate-500 font-mono">
+                                  {idx + 1}
+                                </td>
+                                <td className="px-4 py-3 min-w-[200px]">
+                                  <div className="flex items-center gap-3">
+                                    <img
+                                      src={avatar}
+                                      alt={item.student_name}
+                                      className="w-8 h-8 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700 shrink-0"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-bold text-white text-xs leading-tight whitespace-nowrap">
+                                          {item.student_name}
+                                        </span>
+                                        {isCurrentUser && (
+                                          <span className="px-1.5 py-0.2 rounded bg-indigo-500/30 text-indigo-300 font-bold text-[10px]">
+                                            You
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 font-mono text-xs text-indigo-300 whitespace-nowrap">
+                                  <div>{item.enrolment_number}</div>
+                                  <div className="text-[10px] text-slate-500">{item.student_uid}</div>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                    studentBatch === 'Batch A'
+                                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                      : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                  }`}>
+                                    {studentBatch}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right whitespace-nowrap">
+                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                                    isPresent
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                                  }`}>
+                                    {isPresent ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : (
+                                      <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                                    )}
+                                    <span>{item.status}</span>
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
+              <span className="text-xs text-slate-400">
+                Official SQLite Student Ledger
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedSessionModal(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

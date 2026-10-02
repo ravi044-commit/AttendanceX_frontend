@@ -85,8 +85,14 @@ export const AuthModal = ({
 
     try {
       let loginEmail = email.trim();
-      if (!loginEmail.includes('@') && selectedRole === 'student') {
-        loginEmail = `${loginEmail}@attendancex.edu`;
+      if (selectedRole === 'student') {
+        if (!loginEmail.includes('@')) {
+          loginEmail = `${loginEmail}@attendancex.edu`;
+        } else if (loginEmail.toLowerCase().endsWith('@attedance.edu')) {
+          loginEmail = loginEmail.replace(/@attedance\.edu$/i, '@attendancex.edu');
+        } else if (loginEmail.toLowerCase().endsWith('@attendance.edu')) {
+          loginEmail = loginEmail.replace(/@attendance\.edu$/i, '@attendancex.edu');
+        }
       }
       const res = await api.login(loginEmail, password, selectedRole);
       onSuccess(res.user, res.token);
@@ -179,14 +185,9 @@ export const AuthModal = ({
         {/* Auth Form (LOGIN ONLY) */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-medium text-slate-300">
-                {selectedRole === 'student' ? 'Enrollment Number / Email' : 'Email Address'}
-              </label>
-              {selectedRole === 'student' && (
-                <span className="text-[10px] text-indigo-400 font-mono">e.g. 246250307001@attendancex.edu</span>
-              )}
-            </div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              {selectedRole === 'student' ? 'Enrollment Number / Email' : 'Email Address'}
+            </label>
             <div className="relative">
               <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
               <input
@@ -196,7 +197,7 @@ export const AuthModal = ({
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={
                   selectedRole === 'student'
-                    ? '246250307001@attendancex.edu'
+                    ? 'enrollment_number@attendance.edu'
                     : selectedRole === 'faculty'
                     ? 'faculty.name@attendancex.edu'
                     : selectedRole === 'hod'
