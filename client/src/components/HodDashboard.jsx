@@ -579,15 +579,15 @@ export const HodDashboard = ({ user }) => {
                 }
 
                 return (
-                  <table className="w-full text-left text-sm text-slate-300">
+                  <table className="w-full min-w-[750px] text-left text-sm text-slate-300">
                     <thead className="bg-slate-950/80 text-[11px] uppercase font-bold text-slate-400 border-b border-slate-800 sticky top-0 backdrop-blur-sm z-10">
                       <tr>
                         <th className="px-4 py-3 w-12 text-center">#</th>
-                        <th className="px-4 py-3">Student Name</th>
-                        <th className="px-4 py-3">Enrolment & UID</th>
-                        <th className="px-4 py-3">Subject & Session</th>
-                        <th className="px-4 py-3">Faculty In-Charge</th>
-                        <th className="px-4 py-3 text-right">Attendance Status</th>
+                        <th className="px-4 py-3 min-w-[200px]">Student Name</th>
+                        <th className="px-4 py-3 whitespace-nowrap">Enrolment & UID</th>
+                        <th className="px-4 py-3 whitespace-nowrap">Subject & Session</th>
+                        <th className="px-4 py-3 whitespace-nowrap">Faculty In-Charge</th>
+                        <th className="px-4 py-3 text-right whitespace-nowrap">Attendance Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
@@ -612,19 +612,19 @@ export const HodDashboard = ({ user }) => {
                             <td className="px-4 py-3 text-center text-xs text-slate-500 font-mono">
                               {idx + 1}
                             </td>
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 min-w-[200px]">
                               <div className="flex items-center gap-3">
                                 <img
                                   src={avatar}
                                   alt={item.student_name}
-                                  className="w-8 h-8 rounded-full object-cover bg-slate-800 ring-1 ring-purple-500/30"
+                                  className="w-8 h-8 rounded-full object-cover bg-slate-800 ring-1 ring-purple-500/30 shrink-0"
                                 />
-                                <div>
-                                  <div className="font-bold text-white text-xs leading-tight">{item.student_name}</div>
+                                <div className="min-w-0">
+                                  <div className="font-bold text-white text-xs leading-tight whitespace-nowrap">{item.student_name}</div>
                                   <div className="flex items-center gap-1.5 mt-0.5">
-                                    <span className="text-[10px] text-slate-400">Semester 6</span>
+                                    <span className="text-[10px] text-slate-400 whitespace-nowrap">Semester 6</span>
                                     <span className="text-slate-600">•</span>
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded whitespace-nowrap ${
                                       studentBatch === 'Batch A'
                                         ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                                         : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
@@ -985,7 +985,7 @@ export const HodDashboard = ({ user }) => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300">
+            <table className="w-full min-w-[700px] text-left text-sm text-slate-300">
               <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800">
                 <tr>
                   <th className="px-6 py-3.5">Session Date</th>
@@ -1099,28 +1099,28 @@ export const HodDashboard = ({ user }) => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300">
+            <table className="w-full min-w-[750px] text-left text-sm text-slate-300">
               <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800">
                 <tr>
-                  <th className="px-6 py-3.5">Student</th>
-                  <th className="px-6 py-3.5">UID & Enrolment</th>
-                  <th className="px-6 py-3.5">Lectures</th>
-                  <th className="px-6 py-3.5">Labs</th>
-                  <th className="px-6 py-3.5">Overall %</th>
-                  <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-3.5 min-w-[200px]">Student</th>
+                  <th className="px-6 py-3.5 whitespace-nowrap">UID & Enrolment</th>
+                  <th className="px-6 py-3.5 whitespace-nowrap">Lectures</th>
+                  <th className="px-6 py-3.5 whitespace-nowrap">Labs</th>
+                  <th className="px-6 py-3.5 whitespace-nowrap">Overall %</th>
+                  <th className="px-6 py-3.5 whitespace-nowrap">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredStudents.map((s) => (
                   <tr key={s.uid} className="hover:bg-slate-900/40 transition-colors">
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 min-w-[200px]">
                       <div className="flex items-center gap-3">
                         <img
                           src={s.student_photo}
                           alt={s.name}
-                          className="w-9 h-9 rounded-full object-cover bg-slate-800"
+                          className="w-9 h-9 rounded-full object-cover bg-slate-800 shrink-0"
                         />
-                        <span className="font-semibold text-white">{s.name}</span>
+                        <span className="font-semibold text-white whitespace-nowrap">{s.name}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 font-mono text-xs text-indigo-300">

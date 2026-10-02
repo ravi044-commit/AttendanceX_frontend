@@ -316,22 +316,21 @@ export const AdminDashboard = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-300">
+          <table className="w-full min-w-[720px] text-left text-sm text-slate-300">
             <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="px-6 py-3.5">User / Student</th>
-                <th className="px-6 py-3.5">UID & Enrolment</th>
-                <th className="px-6 py-3.5">Role & Dept</th>
-                <th className="px-6 py-3.5">Status</th>
-                <th className="px-6 py-3.5">Attendance %</th>
-                <th className="px-6 py-3.5">Formula Metric (30% * Pres * 182.5)</th>
-                <th className="px-6 py-3.5 text-right">Actions</th>
+                <th className="px-6 py-3.5 min-w-[220px]">User / Student</th>
+                <th className="px-6 py-3.5 whitespace-nowrap">UID & Enrolment</th>
+                <th className="px-6 py-3.5 whitespace-nowrap">Role & Dept</th>
+                <th className="px-6 py-3.5 whitespace-nowrap">Status</th>
+                <th className="px-6 py-3.5 whitespace-nowrap">Overall Attendance %</th>
+                <th className="px-6 py-3.5 text-right whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                     No records found matching your filters.
                   </td>
                 </tr>
@@ -339,28 +338,27 @@ export const AdminDashboard = () => {
                 filteredUsers.map((u) => {
                   const studentInfo = studentMap[u.uid];
                   const percentage = studentInfo ? studentInfo.percentage : null;
-                  const weighted = studentInfo ? studentInfo.weighted_percentage : null;
                   const enrolment = studentInfo ? studentInfo.enrolment_number : '-';
 
                   return (
                     <tr key={u.id} className="hover:bg-slate-900/50 transition-colors">
                       {/* Name & Photo */}
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 min-w-[220px]">
                         <div className="flex items-center gap-3">
                           <img
                             src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.name)}`}
                             alt={u.name}
-                            className="w-10 h-10 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700"
+                            className="w-10 h-10 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700 shrink-0"
                           />
-                          <div>
-                            <div className="font-semibold text-white">{u.name}</div>
-                            <div className="text-xs text-slate-400 font-mono">{u.email}</div>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-white whitespace-nowrap">{u.name}</div>
+                            <div className="text-xs text-slate-400 font-mono truncate max-w-[180px]">{u.email}</div>
                           </div>
                         </div>
                       </td>
 
                       {/* UID & Enrolment */}
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="font-mono text-xs text-indigo-300 font-semibold">{u.uid}</div>
                         {enrolment !== '-' && (
                           <div className="text-xs text-slate-400 font-mono">EN: {enrolment}</div>
@@ -368,7 +366,7 @@ export const AdminDashboard = () => {
                       </td>
 
                       {/* Role & Dept */}
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex flex-col gap-1 items-start">
                           <span
                             className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
@@ -388,22 +386,22 @@ export const AdminDashboard = () => {
                       </td>
 
                       {/* Status */}
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                           {studentInfo ? studentInfo.status : 'Active'}
                         </span>
                       </td>
 
-                      {/* Attendance Percentage */}
-                      <td className="px-6 py-4">
+                      {/* Overall Attendance Percentage */}
+                      <td className="px-6 py-4 whitespace-nowrap">
                         {percentage !== null ? (
                           <div>
                             <div className="flex items-center justify-between text-xs mb-1">
                               <span className={`font-bold ${percentage >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>
                                 {percentage}%
                               </span>
-                              <span className="text-slate-500 text-[10px]">
+                              <span className="text-slate-500 text-[10px] ml-2">
                                 {studentInfo.total_classes_present}/{studentInfo.total_classes_conducted}
                               </span>
                             </div>
@@ -419,22 +417,8 @@ export const AdminDashboard = () => {
                         )}
                       </td>
 
-                      {/* Formula Metric: 30% * Present * 182.5 */}
-                      <td className="px-6 py-4">
-                        {weighted !== null ? (
-                          <div className="flex items-center gap-1.5">
-                            <Award className="w-4 h-4 text-indigo-400" />
-                            <span className="font-mono font-bold text-indigo-300 text-xs">
-                              {weighted} pts
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-500">-</span>
-                        )}
-                      </td>
-
                       {/* Actions */}
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
                         <button
                           onClick={() => handleDeleteUser(u)}
                           className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 transition-colors"

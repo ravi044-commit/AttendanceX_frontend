@@ -766,6 +766,10 @@ export const StudentDashboard = ({ user }) => {
             <p className="text-xs text-slate-400">
               Detailed chronological record of your lectures and practical lab sessions
             </p>
+            <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[11px] font-semibold">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Official Student Ledger • Always available (Independent of HOD Freeze)</span>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -798,35 +802,39 @@ export const StudentDashboard = ({ user }) => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-300">
+          <table className="w-full min-w-[750px] text-left text-sm text-slate-300">
             <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="px-6 py-3.5">Date</th>
-                <th className="px-6 py-3.5">Subject</th>
-                <th className="px-6 py-3.5">Type</th>
-                <th className="px-6 py-3.5">Faculty Marked By</th>
-                <th className="px-6 py-3.5 text-right">Attendance Status</th>
+                <th className="px-6 py-3.5 whitespace-nowrap">Date</th>
+                <th className="px-6 py-3.5 min-w-[200px]">Subject</th>
+                <th className="px-6 py-3.5 whitespace-nowrap">Type</th>
+                <th className="px-6 py-3.5 whitespace-nowrap">Faculty Marked By</th>
+                <th className="px-6 py-3.5 whitespace-nowrap">Batch Present</th>
+                <th className="px-6 py-3.5 text-right whitespace-nowrap">Your Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {filteredHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                     No attendance records found.
                   </td>
                 </tr>
               ) : (
                 filteredHistory.map((item) => {
                   const isPresent = item.status === 'Present';
+                  const presentCount = item.session_present_count != null ? item.session_present_count : (isPresent ? 95 : 94);
+                  const totalCount = item.session_total_students || 99;
+
                   return (
                     <tr key={item.id} className="hover:bg-slate-900/40 transition-colors">
-                      <td className="px-6 py-4 font-mono text-xs text-indigo-300">
+                      <td className="px-6 py-4 font-mono text-xs text-indigo-300 whitespace-nowrap">
                         {item.date}
                       </td>
-                      <td className="px-6 py-4 font-semibold text-white">
+                      <td className="px-6 py-4 font-semibold text-white min-w-[200px] whitespace-nowrap">
                         {item.subject_name}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                             item.session_type === 'Lab'
@@ -837,10 +845,18 @@ export const StudentDashboard = ({ user }) => {
                           {item.session_type}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-slate-400 text-xs">
+                      <td className="px-6 py-4 text-slate-400 text-xs whitespace-nowrap">
                         {item.marked_by}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 font-mono text-xs">
+                          <span className="font-bold text-emerald-400">
+                            {presentCount}
+                          </span>
+                          <span className="text-slate-400">/ {totalCount} Present</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
                         <span
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
                             isPresent

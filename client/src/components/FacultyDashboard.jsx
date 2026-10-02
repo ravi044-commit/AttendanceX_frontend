@@ -3,7 +3,7 @@ import {
   BookOpen, Users, CheckCircle, XCircle, Calendar, Clock,
   Sparkles, CheckSquare, Send, Award, RefreshCw, Filter, Layers,
   Search, Eye, FileText, CheckCircle2, ChevronRight, Lock, Unlock,
-  ShieldAlert
+  ShieldAlert, AlertCircle
 } from 'lucide-react';
 import { api } from '../utils/api';
 
@@ -542,20 +542,20 @@ export const FacultyDashboard = ({ user }) => {
                     key={student.uid}
                     className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-900/40 transition-colors"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <img
                         src={student.student_photo}
                         alt={student.name}
-                        className="w-10 h-10 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700"
+                        className="w-10 h-10 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700 shrink-0"
                       />
-                      <div>
-                        <div className="font-bold text-white text-sm">{student.name}</div>
-                        <div className="text-xs text-slate-400 flex items-center gap-2">
-                          <span className="font-mono text-indigo-400">{student.enrolment_number}</span>
+                      <div className="min-w-0">
+                        <div className="font-bold text-white text-sm whitespace-nowrap">{student.name}</div>
+                        <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-indigo-400 whitespace-nowrap">{student.enrolment_number}</span>
                           <span>•</span>
-                          <span>UID: {student.uid}</span>
+                          <span className="whitespace-nowrap">UID: {student.uid}</span>
                           <span>•</span>
-                          <span className="text-emerald-400 font-semibold">{student.percentage}% Avg</span>
+                          <span className="text-emerald-400 font-semibold whitespace-nowrap">{student.percentage}% Overall Attendance</span>
                         </div>
                       </div>
                     </div>
@@ -597,6 +597,11 @@ export const FacultyDashboard = ({ user }) => {
                     <Lock className="w-3.5 h-3.5 text-purple-400 shrink-0" />
                     Attendance for {sessionDate} is finalized and frozen by HOD. No changes can be submitted.
                   </span>
+                ) : sessionsList.find((s) => s.date === sessionDate) ? (
+                  <span className="text-amber-300 font-medium flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    Session already recorded for {sessionDate} ({sessionsList.find((s) => s.date === sessionDate)?.subject_name}). Submitting will overwrite it (1 session per date).
+                  </span>
                 ) : (
                   <span>
                     Saving will record official attendance for all <strong className="text-white">{students.length} students</strong> into SQLite (1 valid session per date).
@@ -616,7 +621,7 @@ export const FacultyDashboard = ({ user }) => {
                   className="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
                 >
                   <Send className="w-4 h-4" />
-                  <span>{submitting ? 'Saving to SQLite...' : 'Save & Submit Attendance'}</span>
+                  <span>{submitting ? 'Saving to SQLite...' : sessionsList.find((s) => s.date === sessionDate) ? 'Overwrite & Save Attendance' : 'Save & Submit Attendance'}</span>
                 </button>
               )}
             </div>
@@ -787,14 +792,14 @@ export const FacultyDashboard = ({ user }) => {
                       <p className="text-xs text-slate-400 mt-2">Loading saved attendance sheet...</p>
                     </div>
                   ) : (
-                    <table className="w-full text-left text-sm text-slate-300">
+                    <table className="w-full min-w-[700px] text-left text-sm text-slate-300">
                       <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800 sticky top-0">
                         <tr>
-                          <th className="px-6 py-3">Student Name</th>
-                          <th className="px-6 py-3">Batch & Division</th>
-                          <th className="px-6 py-3">Enrollment Number</th>
-                          <th className="px-6 py-3">UID</th>
-                          <th className="px-6 py-3 text-right">Session Status</th>
+                          <th className="px-6 py-3 min-w-[180px]">Student Name</th>
+                          <th className="px-6 py-3 whitespace-nowrap">Batch & Division</th>
+                          <th className="px-6 py-3 whitespace-nowrap">Enrollment Number</th>
+                          <th className="px-6 py-3 whitespace-nowrap">UID</th>
+                          <th className="px-6 py-3 text-right whitespace-nowrap">Session Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
@@ -819,7 +824,7 @@ export const FacultyDashboard = ({ user }) => {
 
                             return (
                               <tr key={rec.id} className="hover:bg-slate-900/40 transition-colors">
-                                <td className="px-6 py-3.5 font-bold text-white text-xs sm:text-sm">
+                                <td className="px-6 py-3.5 font-bold text-white text-xs sm:text-sm whitespace-nowrap">
                                   {rec.student_name}
                                 </td>
                                 <td className="px-6 py-3.5">

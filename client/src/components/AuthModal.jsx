@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, GraduationCap, BookOpen, Crown, Mail, Lock, User, Building, AlertCircle, ArrowRight, CheckCircle2, Sparkles, Info } from 'lucide-react';
+import { Shield, GraduationCap, BookOpen, Crown, Mail, Lock, Eye, EyeOff, User, Building, AlertCircle, ArrowRight, CheckCircle2, Sparkles, Info } from 'lucide-react';
 import { api } from '../utils/api';
 
 export const AuthModal = ({
@@ -13,6 +13,7 @@ export const AuthModal = ({
   // Form fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -26,9 +27,7 @@ export const AuthModal = ({
       desc: 'System oversight & user management',
       icon: Shield,
       color: 'from-amber-500/20 to-orange-500/20 border-amber-500/40 text-amber-400',
-      activeBadge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-      demoEmail: 'raviadmin@attendancex.edu',
-      demoPass: 'Admin@123'
+      activeBadge: 'bg-amber-500/20 text-amber-300 border-amber-500/40'
     },
     {
       id: 'student',
@@ -37,9 +36,7 @@ export const AuthModal = ({
       desc: 'View personal attendance & history',
       icon: GraduationCap,
       color: 'from-emerald-500/20 to-teal-500/20 border-emerald-500/40 text-emerald-400',
-      activeBadge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-      demoEmail: '246250307001@attendancex.edu',
-      demoPass: '246250307001'
+      activeBadge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
     },
     {
       id: 'faculty',
@@ -48,9 +45,7 @@ export const AuthModal = ({
       desc: 'Mark lecture & lab attendance',
       icon: BookOpen,
       color: 'from-blue-500/20 to-indigo-500/20 border-blue-500/40 text-blue-400',
-      activeBadge: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
-      demoEmail: 'faculty.jd.vadalia@attendancex.edu',
-      demoPass: 'Faculty@123'
+      activeBadge: 'bg-blue-500/20 text-blue-300 border-blue-500/40'
     },
     {
       id: 'hod',
@@ -59,9 +54,7 @@ export const AuthModal = ({
       desc: 'Department analytics & monitoring',
       icon: Crown,
       color: 'from-purple-500/20 to-pink-500/20 border-purple-500/40 text-purple-400',
-      activeBadge: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
-      demoEmail: 'hod.cg.ajudiya@attendancex.edu',
-      demoPass: 'Hod@123'
+      activeBadge: 'bg-purple-500/20 text-purple-300 border-purple-500/40'
     }
   ];
 
@@ -71,22 +64,18 @@ export const AuthModal = ({
       const activeRole = initialRole || 'admin';
       setSelectedRole(activeRole);
       setError('');
-      const r = roles.find((item) => item.id === activeRole);
-      if (r) {
-        setEmail(r.demoEmail);
-        setPassword(r.demoPass);
-      }
+      setEmail('');
+      setPassword('');
+      setShowPassword(false);
     }
   }, [isOpen, initialRole]);
 
   const handleRoleSelect = (roleId) => {
     setSelectedRole(roleId);
     setError('');
-    const r = roles.find((item) => item.id === roleId);
-    if (r) {
-      setEmail(r.demoEmail);
-      setPassword(r.demoPass);
-    }
+    setEmail('');
+    setPassword('');
+    setShowPassword(false);
   };
 
   const handleSubmit = async (e) => {
@@ -194,7 +183,7 @@ export const AuthModal = ({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@attendancex.edu"
+                placeholder="Enter your institutional email"
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono text-xs sm:text-sm"
               />
             </div>
@@ -205,13 +194,26 @@ export const AuthModal = ({
             <div className="relative">
               <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-9 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                placeholder="Enter your password"
+                className="w-full pl-9 pr-10 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 transition-colors p-1 rounded cursor-pointer"
+                title={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
 
