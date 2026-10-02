@@ -84,7 +84,11 @@ export const AuthModal = ({
     setLoading(true);
 
     try {
-      const res = await api.login(email, password, selectedRole);
+      let loginEmail = email.trim();
+      if (!loginEmail.includes('@') && selectedRole === 'student') {
+        loginEmail = `${loginEmail}@attendancex.edu`;
+      }
+      const res = await api.login(loginEmail, password, selectedRole);
       onSuccess(res.user, res.token);
     } catch (err) {
       setError(err.message || 'Authentication failed. Please verify credentials.');
@@ -175,15 +179,30 @@ export const AuthModal = ({
         {/* Auth Form (LOGIN ONLY) */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-slate-300">
+                {selectedRole === 'student' ? 'Enrollment Number / Email' : 'Email Address'}
+              </label>
+              {selectedRole === 'student' && (
+                <span className="text-[10px] text-indigo-400 font-mono">e.g. 246250307001@attendancex.edu</span>
+              )}
+            </div>
             <div className="relative">
               <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
               <input
-                type="email"
+                type="text"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your institutional email"
+                placeholder={
+                  selectedRole === 'student'
+                    ? '246250307001@attendancex.edu'
+                    : selectedRole === 'faculty'
+                    ? 'faculty.name@attendancex.edu'
+                    : selectedRole === 'hod'
+                    ? 'hod@attendancex.edu'
+                    : 'admin@attendancex.edu'
+                }
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono text-xs sm:text-sm"
               />
             </div>
