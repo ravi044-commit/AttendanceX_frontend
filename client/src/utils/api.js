@@ -232,6 +232,10 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ uid, image: imageBase64 }),
     });
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Backend server not reachable at ${API_BASE} (received HTML). Make sure your backend server is running on http://localhost:5000.`);
+    }
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to enroll face photo');
     return data;
@@ -242,7 +246,8 @@ export const api = {
       const res = await fetch(`${API_BASE}/face/count/${encodeURIComponent(uid)}`, {
         headers: { ...getAuthHeaders() }
       });
-      if (!res.ok) return { photoCount: 0, photos: [] };
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) return { photoCount: 0, photos: [] };
       return await res.json();
     } catch {
       return { photoCount: 0, photos: [] };
