@@ -48,7 +48,7 @@ A full-stack, responsive attendance management web application built with **Reac
 cd server
 npm start
 ```
-*Backend runs on `http://localhost:5000` connected to `attendancex.db`*
+*Backend runs on `http://localhost:5000`*
 
 ### Start Frontend Client:
 ```bash

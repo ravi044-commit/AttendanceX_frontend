@@ -223,5 +223,29 @@ export const api = {
     });
     if (!res.ok) throw new Error('Failed to fetch attendance locks');
     return res.json();
+  },
+
+  // Face Recognition Enrollment
+  enrollFace: async (uid, imageBase64) => {
+    const res = await fetch(`${API_BASE}/face/enroll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ uid, image: imageBase64 }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to enroll face photo');
+    return data;
+  },
+
+  getFacePhotoCount: async (uid) => {
+    try {
+      const res = await fetch(`${API_BASE}/face/count/${encodeURIComponent(uid)}`, {
+        headers: { ...getAuthHeaders() }
+      });
+      if (!res.ok) return { photoCount: 0, photos: [] };
+      return await res.json();
+    } catch {
+      return { photoCount: 0, photos: [] };
+    }
   }
 };

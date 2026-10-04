@@ -4,6 +4,12 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import {
   initDatabase,
   getQuery,
@@ -1423,6 +1429,206 @@ app.get('/api/department/stats', async (req, res) => {
   } catch (error) {
     console.error('Department stats error:', error);
     res.status(500).json({ error: 'Failed to retrieve department stats' });
+  }
+});
+
+/* ==========================================================================
+   DNN FACE RECOGNITION & ENROLLMENT SYSTEM
+   ========================================================================== */
+
+// Helper to resolve the root FACE_DB_PATH directory from environment or fallback
+const getFaceDbPath = () => {
+  const envPath = process.env.FACE_DB_PATH;
+  if (!envPath) {
+    return path.resolve(__dirname, 'face_db');
+  }
+  return path.isAbsolute(envPath) ? envPath : path.resolve(__dirname, envPath);
+};
+
+// Clear cached embeddings so DNN face recognition model recomputes with new enrolled photos
+const refreshOrClearEmbeddingsCache = async (baseDir) => {
+  const deletedFiles = [];
+  try {
+    if (!fs.existsSync(baseDir)) return deletedFiles;
+
+    const entries = await fs.promises.readdir(baseDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile()) {
+        const name = entry.name.toLowerCase();
+        // Common cache patterns created by face recognition models (DeepFace representations_*.pkl, embeddings.*, encodings.pickle, *.npy, etc.)
+        if (
+          name.startsWith('representations_') ||
+          name.includes('embedding') ||
+          name.includes('encoding') ||
+          name.endsWith('.pkl') ||
+          name.endsWith('.pickle') ||
+          name.endsWith('.npy')
+        ) {
+          const fullPath = path.join(baseDir, entry.name);
+          try {
+            await fs.promises.unlink(fullPath);
+            deletedFiles.push(fullPath);
+            console.log(`[FACE CACHE] Cleared cached model embeddings file: ${entry.name}`);
+          } catch (delErr) {
+            console.warn(`[FACE CACHE] Could not delete ${fullPath}:`, delErr.message);
+          }
+        }
+      } else if (entry.isDirectory() && (entry.name === '.cache' || entry.name === 'cache' || entry.name === '__pycache__')) {
+        const cacheDir = path.join(baseDir, entry.name);
+        try {
+          await fs.promises.rm(cacheDir, { recursive: true, force: true });
+          deletedFiles.push(cacheDir);
+          console.log(`[FACE CACHE] Cleared cache directory: ${entry.name}`);
+        } catch (delErr) {
+          console.warn(`[FACE CACHE] Could not delete cache dir ${cacheDir}:`, delErr.message);
+        }
+      }
+    }
+
+    // Check if an external custom cache path is defined in environment variables
+    if (process.env.FACE_CACHE_PATH && fs.existsSync(process.env.FACE_CACHE_PATH)) {
+      try {
+        const customPath = path.resolve(process.env.FACE_CACHE_PATH);
+        const stat = await fs.promises.stat(customPath);
+        if (stat.isDirectory()) {
+          await fs.promises.rm(customPath, { recursive: true, force: true });
+        } else {
+          await fs.promises.unlink(customPath);
+        }
+        deletedFiles.push(customPath);
+        console.log(`[FACE CACHE] Cleared external cache path: ${customPath}`);
+      } catch (e) {
+        console.warn(`[FACE CACHE] Error removing custom cache:`, e.message);
+      }
+    }
+
+    // Optional: trigger webhook if face verification server exposes a reload URL
+    if (process.env.FACE_MODEL_RELOAD_URL) {
+      try {
+        fetch(process.env.FACE_MODEL_RELOAD_URL, { method: 'POST' }).catch(() => {});
+        console.log(`[FACE CACHE] Triggered model reload URL: ${process.env.FACE_MODEL_RELOAD_URL}`);
+      } catch {}
+    }
+  } catch (err) {
+    console.error('[FACE CACHE] Error during cache refresh/cleanup:', err);
+  }
+  return deletedFiles;
+};
+
+// POST /api/face/enroll: Receives { uid, image } and saves image as <FACE_DB_PATH>/<uid>/<timestamp>.jpg
+app.post('/api/face/enroll', async (req, res) => {
+  try {
+    const { uid, image } = req.body || {};
+
+    // 1. Validate UID - prevent path traversal
+    if (!uid || typeof uid !== 'string' || !uid.trim()) {
+      return res.status(400).json({ error: 'Student UID is required' });
+    }
+
+    const cleanUid = uid.trim();
+
+    // Disallow path traversal characters: / \ .. null-byte or anything outside safe characters
+    if (
+      cleanUid.includes('..') ||
+      cleanUid.includes('/') ||
+      cleanUid.includes('\\') ||
+      cleanUid.includes('\0') ||
+      !/^[a-zA-Z0-9_\-]+$/.test(cleanUid)
+    ) {
+      return res.status(400).json({
+        error: 'Invalid UID format: must only contain alphanumeric characters, hyphens, and underscores'
+      });
+    }
+
+    // 2. Validate image data
+    if (!image || typeof image !== 'string') {
+      return res.status(400).json({ error: 'Image data is required (base64 string or Data URL)' });
+    }
+
+    let base64Data = image;
+    if (base64Data.includes(',')) {
+      base64Data = base64Data.split(',')[1];
+    }
+
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+    if (!imageBuffer || imageBuffer.length === 0) {
+      return res.status(400).json({ error: 'Invalid or empty image buffer' });
+    }
+
+    // 3. Resolve target directory and verify safe boundary
+    const baseDir = getFaceDbPath();
+    const targetDir = path.resolve(baseDir, cleanUid);
+
+    // Strictly ensure targetDir does not escape baseDir
+    const relative = path.relative(baseDir, targetDir);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return res.status(400).json({ error: 'Path traversal attempt detected in UID' });
+    }
+
+    // Create folder if missing (<FACE_DB_PATH>/<uid>)
+    await fs.promises.mkdir(targetDir, { recursive: true });
+
+    // 4. Save image as <FACE_DB_PATH>/<uid>/<timestamp>.jpg
+    const timestamp = Date.now();
+    let filename = `${timestamp}.jpg`;
+    let filePath = path.join(targetDir, filename);
+    let counter = 1;
+    while (fs.existsSync(filePath)) {
+      filename = `${timestamp}_${counter++}.jpg`;
+      filePath = path.join(targetDir, filename);
+    }
+
+    await fs.promises.writeFile(filePath, imageBuffer);
+    console.log(`[FACE ENROLL] Saved face photo for ${cleanUid} -> ${filename} (${imageBuffer.length} bytes)`);
+
+    // 5. Refresh/delete model's cached embeddings so new photos are picked up
+    const deletedCache = await refreshOrClearEmbeddingsCache(baseDir);
+
+    // 6. Read updated photo count for this student
+    const files = await fs.promises.readdir(targetDir);
+    const photoFiles = files.filter(f => /\.(jpe?g|png|webp)$/i.test(f)).sort();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Face photo saved successfully',
+      uid: cleanUid,
+      filename,
+      photoCount: photoFiles.length,
+      savedPhotos: photoFiles,
+      cacheCleared: deletedCache.length > 0
+    });
+  } catch (error) {
+    console.error('Face enrollment error:', error);
+    res.status(500).json({ error: error.message || 'Failed to save face enrollment photo' });
+  }
+});
+
+// GET /api/face/count/:uid: Returns count and list of enrolled photos for a student
+app.get('/api/face/count/:uid', async (req, res) => {
+  try {
+    const { uid } = req.params;
+    if (!uid || typeof uid !== 'string' || !uid.trim() || !/^[a-zA-Z0-9_\-]+$/.test(uid.trim())) {
+      return res.status(400).json({ error: 'Invalid UID format' });
+    }
+
+    const cleanUid = uid.trim();
+    const baseDir = getFaceDbPath();
+    const targetDir = path.resolve(baseDir, cleanUid);
+    const relative = path.relative(baseDir, targetDir);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return res.status(400).json({ error: 'Invalid UID' });
+    }
+
+    if (!fs.existsSync(targetDir)) {
+      return res.json({ uid: cleanUid, photoCount: 0, photos: [] });
+    }
+
+    const files = await fs.promises.readdir(targetDir);
+    const photos = files.filter(f => /\.(jpe?g|png|webp)$/i.test(f)).sort();
+    return res.json({ uid: cleanUid, photoCount: photos.length, photos });
+  } catch (error) {
+    console.error('Face count retrieval error:', error);
+    res.status(500).json({ error: 'Failed to retrieve face enrollment count' });
   }
 });
 

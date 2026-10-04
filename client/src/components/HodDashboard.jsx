@@ -9,6 +9,7 @@ import {
 import { api } from '../utils/api';
 import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
 import { cleanAvatarUrl } from '../utils/avatarUtils';
+import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 
 export const HodDashboard = ({ user }) => {
   const [data, setData] = useState(null);
@@ -38,6 +39,7 @@ export const HodDashboard = ({ user }) => {
   const [loadingSessionRecords, setLoadingSessionRecords] = useState(false);
   const [sessionFilterStatus, setSessionFilterStatus] = useState('All'); // 'All', 'Present', 'Absent'
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
+  const [faceEnrollStudent, setFaceEnrollStudent] = useState(null); // { uid, name }
 
   const notify = (message, type = 'success') => {
     setNotification({ show: true, message, type });
@@ -1095,6 +1097,7 @@ export const HodDashboard = ({ user }) => {
                   <th className="px-6 py-3.5 whitespace-nowrap">Labs</th>
                   <th className="px-6 py-3.5 whitespace-nowrap">Overall %</th>
                   <th className="px-6 py-3.5 whitespace-nowrap">Status</th>
+                  <th className="px-6 py-3.5 text-right whitespace-nowrap">Face AI</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -1129,6 +1132,17 @@ export const HodDashboard = ({ user }) => {
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
                         {s.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setFaceEnrollStudent({ uid: s.uid, name: s.name })}
+                        className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                        title={`Enroll Face for ${s.name} (${s.uid})`}
+                      >
+                        <span className="text-sm">📷</span>
+                        <span>Enroll</span>
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1216,6 +1230,17 @@ export const HodDashboard = ({ user }) => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Face Enrollment Modal */}
+      {faceEnrollStudent && (
+        <FaceEnrollmentModal
+          isOpen={!!faceEnrollStudent}
+          onClose={() => setFaceEnrollStudent(null)}
+          uid={faceEnrollStudent.uid}
+          studentName={faceEnrollStudent.name}
+          onComplete={(count) => notify(`Enrolled ${count} face photos for ${faceEnrollStudent.name}`)}
+        />
       )}
     </div>
   );

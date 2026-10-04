@@ -7,6 +7,7 @@ import {
 import { api } from '../utils/api';
 import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
 import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
+import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 
 export const StudentDashboard = ({ user }) => {
   const [studentInfo, setStudentInfo] = useState(null);
@@ -24,6 +25,7 @@ export const StudentDashboard = ({ user }) => {
   const [modalSearchQuery, setModalSearchQuery] = useState('');
   const [modalFilterStatus, setModalFilterStatus] = useState('All'); // 'All', 'Present', 'Absent'
   const [modalBatchFilter, setModalBatchFilter] = useState('All'); // 'All', 'Batch A', 'Batch B'
+  const [showFaceModal, setShowFaceModal] = useState(false);
 
   const handleOpenSessionModal = async (sessionItem) => {
     setSelectedSessionModal(sessionItem);
@@ -212,12 +214,21 @@ export const StudentDashboard = ({ user }) => {
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 border border-slate-800 p-6 sm:p-8 shadow-2xl">
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
-            <div className="relative">
+            <div className="relative group">
               <img
                 src={cleanAvatarUrl(s.student_photo || user?.avatar, s.name, null, false)}
                 alt={s.name}
                 className="w-20 h-20 rounded-2xl object-cover bg-slate-800 ring-2 ring-indigo-500/50 shadow-xl"
               />
+              <button
+                type="button"
+                onClick={() => setShowFaceModal(true)}
+                className="absolute inset-0 bg-slate-950/60 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-xs font-semibold cursor-pointer backdrop-blur-[2px]"
+                title="Enroll Face Photos"
+              >
+                <span className="text-xl">📷</span>
+                <span className="text-[10px] mt-0.5">Enroll</span>
+              </button>
               <span className="absolute -bottom-1 -right-1 p-1 bg-emerald-500 rounded-full ring-4 ring-slate-900"></span>
             </div>
 
@@ -239,8 +250,18 @@ export const StudentDashboard = ({ user }) => {
 
           <div className="flex items-center gap-3">
             <button
+              type="button"
+              onClick={() => setShowFaceModal(true)}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-xs sm:text-sm flex items-center gap-2 border border-indigo-400/30 shadow-lg shadow-indigo-600/25 transition-all cursor-pointer"
+              title="Enroll Face Photos for AI Attendance"
+            >
+              <span className="text-base leading-none">📷</span>
+              <span>Face Enrollment</span>
+            </button>
+            <button
+              type="button"
               onClick={loadStudentData}
-              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
               title="Refresh Attendance"
             >
               <RefreshCw className="w-4 h-4" />
@@ -1153,6 +1174,16 @@ export const StudentDashboard = ({ user }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Face Enrollment Modal */}
+      {s && s.uid && (
+        <FaceEnrollmentModal
+          isOpen={showFaceModal}
+          onClose={() => setShowFaceModal(false)}
+          uid={s.uid}
+          studentName={s.name}
+        />
       )}
     </div>
   );

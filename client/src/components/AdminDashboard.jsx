@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
+import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 
 export const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
@@ -20,6 +21,7 @@ export const AdminDashboard = () => {
   
   // Modals & form state
   const [showAddModal, setShowAddModal] = useState(false);
+  const [faceEnrollTarget, setFaceEnrollTarget] = useState(null); // { uid, name }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -68,7 +70,7 @@ export const AdminDashboard = () => {
     setIsSubmitting(true);
     try {
       if (formData.role === 'student') {
-        await api.createStudent({
+        const newStu = await api.createStudent({
           name: formData.name,
           email: formData.email,
           enrolment_number: formData.enrolment_number || `2024COMP${Date.now().toString().slice(-4)}`,
@@ -77,6 +79,11 @@ export const AdminDashboard = () => {
           phone: formData.phone,
           status: formData.status
         });
+        notify(`Added new student ${formData.name}! Opening face enrollment...`);
+        setShowAddModal(false);
+        if (newStu && newStu.uid) {
+          setFaceEnrollTarget({ uid: newStu.uid, name: newStu.name });
+        }
       } else {
         await api.createUser({
           name: formData.name,
@@ -87,10 +94,9 @@ export const AdminDashboard = () => {
           phone: formData.phone,
           avatar: cleanAvatarUrl(formData.student_photo, formData.name, null, formData.role === 'faculty' || formData.role === 'hod')
         });
+        notify(`Added new ${formData.role} successfully!`);
+        setShowAddModal(false);
       }
-
-      notify(`Added new ${formData.role} successfully!`);
-      setShowAddModal(false);
       setFormData({
         name: '',
         email: '',
@@ -420,13 +426,27 @@ export const AdminDashboard = () => {
 
                       {/* Actions */}
                       <td className="px-6 py-4 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => handleDeleteUser(u)}
-                          className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 transition-colors"
-                          title="Remove user"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          {(u.role === 'student' || (u.uid && u.uid.startsWith('STU-'))) && (
+                            <button
+                              type="button"
+                              onClick={() => setFaceEnrollTarget({ uid: u.uid, name: u.name })}
+                              className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                              title={`Enroll Face for ${u.name} (${u.uid})`}
+                            >
+                              <span className="text-sm">📷</span>
+                              <span>Enroll</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUser(u)}
+                            className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer"
+                            title="Remove user"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -545,6 +565,17 @@ export const AdminDashboard = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Face Enrollment Modal */}
+      {faceEnrollTarget && (
+        <FaceEnrollmentModal
+          isOpen={!!faceEnrollTarget}
+          onClose={() => setFaceEnrollTarget(null)}
+          uid={faceEnrollTarget.uid}
+          studentName={faceEnrollTarget.name}
+          onComplete={(count) => notify(`Enrolled ${count} face photos for ${faceEnrollTarget.name}`)}
+        />
       )}
     </div>
   );

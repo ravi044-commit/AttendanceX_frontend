@@ -33,3 +33,9 @@ yarn-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Face Database & Cached Embeddings
+face_db/
+server/face_db/
+*.pkl
+*.pickle
