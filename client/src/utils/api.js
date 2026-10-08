@@ -18,11 +18,30 @@ const getAuthHeaders = () => {
   }
 };
 
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 12000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: options.signal || controller.signal,
+    });
+    clearTimeout(timer);
+    return res;
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') {
+      throw new Error('Database/Server request timed out. SQLite service may be waking up.');
+    }
+    throw err;
+  }
+};
+
 export const api = {
   // System Health
   checkHealth: async () => {
     try {
-      const res = await fetch(`${API_BASE}/health`);
+      const res = await fetchWithTimeout(`${API_BASE}/health`);
       return await res.json();
     } catch {
       return { status: 'offline' };
@@ -31,7 +50,7 @@ export const api = {
 
   // Authentication
   login: async (email, password, role) => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, role }),
@@ -42,7 +61,7 @@ export const api = {
   },
 
   register: async (payload) => {
-    const res = await fetch(`${API_BASE}/auth/register`, {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload),
@@ -55,7 +74,7 @@ export const api = {
   // Students
   getStudents: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    const res = await fetch(`${API_BASE}/students?${query}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/students?${query}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch students');
@@ -63,7 +82,7 @@ export const api = {
   },
 
   getStudentByUid: async (uid) => {
-    const res = await fetch(`${API_BASE}/students/${uid}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/students/${uid}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch student details');
@@ -71,7 +90,7 @@ export const api = {
   },
 
   createStudent: async (studentData) => {
-    const res = await fetch(`${API_BASE}/students`, {
+    const res = await fetchWithTimeout(`${API_BASE}/students`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(studentData),
@@ -82,7 +101,7 @@ export const api = {
   },
 
   updateStudent: async (uid, updates) => {
-    const res = await fetch(`${API_BASE}/students/${uid}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/students/${uid}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(updates),
@@ -93,7 +112,7 @@ export const api = {
   },
 
   deleteStudent: async (uid) => {
-    const res = await fetch(`${API_BASE}/students/${uid}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/students/${uid}`, {
       method: 'DELETE',
       headers: { ...getAuthHeaders() }
     });
@@ -105,7 +124,7 @@ export const api = {
   // Users (Admin user management)
   getUsers: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    const res = await fetch(`${API_BASE}/users?${query}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/users?${query}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch users');
@@ -113,7 +132,7 @@ export const api = {
   },
 
   createUser: async (userData) => {
-    const res = await fetch(`${API_BASE}/users`, {
+    const res = await fetchWithTimeout(`${API_BASE}/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(userData),
@@ -124,7 +143,7 @@ export const api = {
   },
 
   deleteUser: async (id) => {
-    const res = await fetch(`${API_BASE}/users/${id}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/users/${id}`, {
       method: 'DELETE',
       headers: { ...getAuthHeaders() }
     });
@@ -136,7 +155,7 @@ export const api = {
   // Classes & Attendance
   getClasses: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    const res = await fetch(`${API_BASE}/classes?${query}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/classes?${query}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch classes');
@@ -144,7 +163,7 @@ export const api = {
   },
 
   markAttendance: async (payload) => {
-    const res = await fetch(`${API_BASE}/attendance/mark`, {
+    const res = await fetchWithTimeout(`${API_BASE}/attendance/mark`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload),
@@ -155,7 +174,7 @@ export const api = {
   },
 
   getAttendanceSummary: async (department = 'Computer Department') => {
-    const res = await fetch(`${API_BASE}/attendance/summary?department=${encodeURIComponent(department)}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/attendance/summary?department=${encodeURIComponent(department)}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch attendance summary');
@@ -163,7 +182,7 @@ export const api = {
   },
 
   getAttendanceSessions: async (department = 'Computer Department') => {
-    const res = await fetch(`${API_BASE}/attendance/sessions-list?department=${encodeURIComponent(department)}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/attendance/sessions-list?department=${encodeURIComponent(department)}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch attendance sessions');
@@ -172,7 +191,7 @@ export const api = {
 
   getAttendanceRecords: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    const res = await fetch(`${API_BASE}/attendance/records?${query}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/attendance/records?${query}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch attendance records');
@@ -180,7 +199,7 @@ export const api = {
   },
 
   updateSingleAttendanceRecord: async (payload) => {
-    const res = await fetch(`${API_BASE}/attendance/update-single`, {
+    const res = await fetchWithTimeout(`${API_BASE}/attendance/update-single`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload),
@@ -191,7 +210,7 @@ export const api = {
   },
 
   getDepartmentStats: async (department = 'Computer Department') => {
-    const res = await fetch(`${API_BASE}/department/stats?department=${encodeURIComponent(department)}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/department/stats?department=${encodeURIComponent(department)}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch department statistics');
@@ -199,7 +218,7 @@ export const api = {
   },
 
   freezeAttendance: async (payload) => {
-    const res = await fetch(`${API_BASE}/attendance/freeze`, {
+    const res = await fetchWithTimeout(`${API_BASE}/attendance/freeze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload),
@@ -210,7 +229,7 @@ export const api = {
   },
 
   getAttendanceLockStatus: async (date, department = 'Computer Department') => {
-    const res = await fetch(`${API_BASE}/attendance/lock-status?date=${encodeURIComponent(date)}&department=${encodeURIComponent(department)}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/attendance/lock-status?date=${encodeURIComponent(date)}&department=${encodeURIComponent(department)}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch lock status');
@@ -218,7 +237,7 @@ export const api = {
   },
 
   getAllAttendanceLocks: async (department = 'Computer Department') => {
-    const res = await fetch(`${API_BASE}/attendance/all-locks?department=${encodeURIComponent(department)}`, {
+    const res = await fetchWithTimeout(`${API_BASE}/attendance/all-locks?department=${encodeURIComponent(department)}`, {
       headers: { ...getAuthHeaders() }
     });
     if (!res.ok) throw new Error('Failed to fetch attendance locks');
@@ -227,7 +246,7 @@ export const api = {
 
   // Face Recognition Enrollment
   enrollFace: async (uid, imageBase64) => {
-    const res = await fetch(`${API_BASE}/face/enroll`, {
+    const res = await fetchWithTimeout(`${API_BASE}/face/enroll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ uid, image: imageBase64 }),
@@ -243,7 +262,7 @@ export const api = {
 
   getFacePhotoCount: async (uid) => {
     try {
-      const res = await fetch(`${API_BASE}/face/count/${encodeURIComponent(uid)}`, {
+      const res = await fetchWithTimeout(`${API_BASE}/face/count/${encodeURIComponent(uid)}`, {
         headers: { ...getAuthHeaders() }
       });
       const contentType = res.headers.get('content-type') || '';

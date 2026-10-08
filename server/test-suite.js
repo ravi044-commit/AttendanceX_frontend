@@ -115,26 +115,25 @@ async function runTestSuite() {
     assert(false, `Authentication test failed: ${err.message}`);
   }
 
-  // TEST SUITE 3: Student Class Partitioning (Enrollment 1-63 = Class A, 64+ = Class B)
-  console.log('\n--- TEST GROUP 3: Class Partitioning (Enrollment 1-63 = Class A, 64+ = Class B) ---');
+  // TEST SUITE 3: Student Batch Partitioning (Batch A: 1-63, Batch B: 64+)
+  console.log('\n--- TEST GROUP 3: Batch Partitioning (Roll 1-63 = A, 64+ = B) ---');
   try {
-    assert(getStudentBatch('STU-COMP-001', '246250307001') === 'Class A', 'Student with Roll 001 is classified as Class A');
-    assert(getStudentBatch('STU-COMP-010', '246250307013') === 'Class A', 'Student with Roll 013 is classified as Class A');
-    assert(getStudentBatch('STU-COMP-051', '246250307063') === 'Class A', 'Student with Roll 063 (Boundary Roll 63) is classified as Class A');
-    assert(getStudentBatch('STU-COMP-052', '246250307064') === 'Class B', 'Student with Roll 064 (Boundary Roll 64) is classified as Class B');
-    assert(getStudentBatch('STU-COMP-063', '246250307077') === 'Class B', 'Student with Roll 077 is classified as Class B');
-    assert(getStudentBatch('STU-COMP-099', '236250307037') === 'Class B', 'Student with D2D Roll 236250307037 is classified as Class B');
+    assert(getStudentBatch('STU-COMP-001', '246250307001') === 'Batch A', 'Student #1 (Roll 1) is classified as Batch A');
+    assert(getStudentBatch('STU-COMP-010', '246250307013') === 'Batch A', 'Student #10 (Roll 10) is classified as Batch A');
+    assert(getStudentBatch('STU-COMP-063', '246250307077') === 'Batch A', 'Student #63 (Boundary Roll 63) is classified as Batch A');
+    assert(getStudentBatch('STU-COMP-064', '246250307078') === 'Batch B', 'Student #64 (Boundary Roll 64) is classified as Batch B');
+    assert(getStudentBatch('STU-COMP-099', '236250307037') === 'Batch B', 'Student #99 (Roll 99) is classified as Batch B');
 
-    // Check students API returns class
+    // Check students API returns batch
     const stusRes = await fetch(`${API_BASE}/students`);
     const stus = await stusRes.json();
     assert(Array.isArray(stus) && stus.length === 99, 'Total 99 enrolled students in database');
-    const classACount = stus.filter(s => getStudentBatch(s.uid, s.enrolment_number) === 'Class A').length;
-    const classBCount = stus.filter(s => getStudentBatch(s.uid, s.enrolment_number) === 'Class B').length;
-    assert(classACount === 51, `Class A has exactly 51 students (Enrollment 1 to 63): Actual=${classACount}`);
-    assert(classBCount === 48, `Class B has exactly 48 students (Enrollment 64 to remaining): Actual=${classBCount}`);
+    const batchACount = stus.filter(s => getStudentBatch(s.uid, s.enrolment_number) === 'Batch A').length;
+    const batchBCount = stus.filter(s => getStudentBatch(s.uid, s.enrolment_number) === 'Batch B').length;
+    assert(batchACount === 63, `Batch A has exactly 63 students (Roll 1 to 63): Actual=${batchACount}`);
+    assert(batchBCount === 36, `Batch B has exactly 36 students (Roll 64 to 99): Actual=${batchBCount}`);
   } catch (err) {
-    assert(false, `Class partitioning test failed: ${err.message}`);
+    assert(false, `Batch partitioning test failed: ${err.message}`);
   }
 
   // TEST SUITE 4: Faculty In-Charge & Session Endpoints

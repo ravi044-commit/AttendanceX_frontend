@@ -39,3 +39,7 @@ face_db/
 server/face_db/
 *.pkl
 *.pickle
+
+# Local Backups & Temporary Scripts
+server_backup/
+server/server_backup/

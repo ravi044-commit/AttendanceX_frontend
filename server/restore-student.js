@@ -2,7 +2,6 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
-import { getAvatarUrl } from './avatarUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,7 +35,7 @@ async function restoreStudent() {
   const name = 'SHIR DHRUV RAMESHBHAI';
   const email = `${enrolment}@attendancex.edu`;
   const hashedPassword = bcrypt.hashSync(enrolment, 10);
-  const avatar = getAvatarUrl(name);
+  const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
 
   // 1. Create User
   const userRes = await run(`
@@ -63,7 +62,7 @@ async function restoreStudent() {
       percentage, weighted_percentage, lecture_present, lecture_total,
       lab_present, lab_total
     )
-    VALUES (?, ?, ?, ?, ?, 'Computer Department', 5, 'A', 'Active', ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, 'Computer Department', 6, 'A', 'Active', ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     uid, userRes.id, name, enrolment, avatar,
     totalPres, totalClasses, percentage, weightedScore,

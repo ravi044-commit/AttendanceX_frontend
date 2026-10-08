@@ -2,7 +2,6 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
-import { getAvatarUrl } from './avatarUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -160,7 +159,7 @@ async function seedRealStudents() {
     const firstName = cleanNameParts[0] || 'student';
     const email = `${s.enrollment_number}@attendancex.edu`;
     const studentPassword = hashPass(s.enrollment_number);
-    const avatar = getAvatarUrl(s.name);
+    const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(s.name)}`;
 
     // Set initial realistic attendance
     const isAbsent = s.status === 'Absent';
@@ -191,7 +190,7 @@ async function seedRealStudents() {
         percentage, weighted_percentage, lecture_present, lecture_total,
         lab_present, lab_total
       )
-      VALUES (?, ?, ?, ?, ?, 'Computer Department', 5, 'A', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, 'Computer Department', 6, 'A', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       formattedUid, userRes.id, s.name, s.enrollment_number, avatar,
       studentStatus, totalPres, totalClasses, percentage, weightedScore,

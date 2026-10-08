@@ -1,15 +1,17 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import {
   initDatabase,
   getQuery,
@@ -17,10 +19,8 @@ import {
   runQuery,
   calculatePercentage,
   calculateWeightedScore,
-  getStudentBatch,
-  cleanupDuplicateDailySessions
+  getStudentBatch
 } from './database.js';
-import { getAvatarUrl, cleanAvatarUrl } from './avatarUtils.js';
 
 dotenv.config();
 
@@ -119,19 +119,8 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    let cleanEmail = email.trim();
-    if (role === 'student') {
-      if (!cleanEmail.includes('@')) {
-        cleanEmail = `${cleanEmail}@attendancex.edu`;
-      } else if (cleanEmail.toLowerCase().endsWith('@attedance.edu')) {
-        cleanEmail = cleanEmail.replace(/@attedance\.edu$/i, '@attendancex.edu');
-      } else if (cleanEmail.toLowerCase().endsWith('@attendance.edu')) {
-        cleanEmail = cleanEmail.replace(/@attendance\.edu$/i, '@attendancex.edu');
-      }
-    }
-
     let query = 'SELECT * FROM users WHERE LOWER(email) = LOWER(?)';
-    const params = [cleanEmail];
+    const params = [email.trim()];
 
     // If role is specified, verify matching role
     if (role) {
@@ -424,14 +413,9 @@ app.get('/api/students/:uid', async (req, res) => {
     }
 
     const history = await allQuery(`
-      SELECT ar.*,
-        (SELECT COUNT(*) FROM attendance_records sub 
-         WHERE sub.date = ar.date AND sub.subject_name = ar.subject_name AND sub.session_type = ar.session_type AND sub.status = 'Present') as session_present_count,
-        (SELECT COUNT(*) FROM attendance_records sub 
-         WHERE sub.date = ar.date AND sub.subject_name = ar.subject_name AND sub.session_type = ar.session_type) as session_total_students
-      FROM attendance_records ar
-      WHERE ar.student_uid = ?
-      ORDER BY ar.date DESC, ar.timestamp DESC
+      SELECT * FROM attendance_records
+      WHERE student_uid = ?
+      ORDER BY date DESC, timestamp DESC
       LIMIT 100
     `, [uid]);
 
@@ -482,7 +466,7 @@ app.post('/api/students', async (req, res) => {
     const dept = department || 'Computer Department';
     const timestamp = Date.now().toString().slice(-4);
     const uid = `STU-COMP-${new Date().getFullYear()}-${timestamp}`;
-    const photo = cleanAvatarUrl(student_photo, name);
+    const photo = student_photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
     const studentEmail = email || `${name.toLowerCase().replace(/\s+/g, '.')}.comp@attendancex.edu`;
 
     // Create user account for student
@@ -500,7 +484,7 @@ app.post('/api/students', async (req, res) => {
         lab_present, lab_total
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0)
-    `, [uid, userRes.id, name, enrolment_number, photo, dept, semester || 5, division || 'A', status || 'Active']);
+    `, [uid, userRes.id, name, enrolment_number, photo, dept, semester || 6, division || 'A', status || 'Active']);
 
     const newStudent = await getQuery('SELECT * FROM students WHERE uid = ?', [uid]);
     res.status(201).json(newStudent);
@@ -614,7 +598,7 @@ app.post('/api/users', async (req, res) => {
     const uid = `${prefix}-COMP-${timestamp}`;
     const hashedPassword = bcrypt.hashSync(password, 10);
     const dept = department || 'Computer Department';
-    const defaultAvatar = cleanAvatarUrl(avatar, name, null, role === 'faculty' || role === 'hod');
+    const defaultAvatar = avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
 
     const result = await runQuery(`
       INSERT INTO users (uid, name, email, password, role, department, phone, avatar)
@@ -719,15 +703,14 @@ app.post('/api/attendance/mark', async (req, res) => {
       });
     }
 
-    // 2. STRICT 1 SESSION PER DATE RULE: If previous records exist on this date for this department,
-    // overwrite them completely so there is strictly 1 official session per day.
+    // 2. SINGLE VALID SESSION PER DATE: If previous records exist for this session on this date, replace cleanly
     const existingRecords = await allQuery(`
       SELECT * FROM attendance_records
-      WHERE date = ? AND department = ?
-    `, [date, department]);
+      WHERE date = ? AND subject_name = ? AND session_type = ? AND department = ?
+    `, [date, subject_name, session_type, department]);
 
     if (existingRecords && existingRecords.length > 0) {
-      // Revert previous student totals before inserting the new session
+      // Revert student totals before inserting updated session
       for (const prev of existingRecords) {
         const student = await getQuery('SELECT * FROM students WHERE uid = ?', [prev.student_uid]);
         if (student) {
@@ -744,26 +727,19 @@ app.post('/api/attendance/mark', async (req, res) => {
             if (prev.status === 'Present') labPres = Math.max(0, labPres - 1);
           }
 
-          const totalPres = lecPres + labPres;
-          const totalTot = lecTot + labTot;
-          const pct = calculatePercentage(totalPres, totalTot);
-          const weightedPct = calculateWeightedScore(totalTot > 0 ? totalPres / totalTot : 0);
-
           await runQuery(`
             UPDATE students
             SET lecture_present = ?, lecture_total = ?,
-                lab_present = ?, lab_total = ?,
-                total_classes_present = ?, total_classes_conducted = ?,
-                percentage = ?, weighted_percentage = ?
+                lab_present = ?, lab_total = ?
             WHERE uid = ?
-          `, [lecPres, lecTot, labPres, labTot, totalPres, totalTot, pct, weightedPct, prev.student_uid]);
+          `, [lecPres, lecTot, labPres, labTot, prev.student_uid]);
         }
       }
 
       await runQuery(`
         DELETE FROM attendance_records
-        WHERE date = ? AND department = ?
-      `, [date, department]);
+        WHERE date = ? AND subject_name = ? AND session_type = ? AND department = ?
+      `, [date, subject_name, session_type, department]);
     }
 
     let presentCount = 0;
@@ -972,10 +948,10 @@ const localDateString = () => {
 
 // Constant-time check of "Authorization: Bearer <RFID_API_KEY>"
 const rfidKeyOk = (req) => {
-  const expected = process.env.RFID_API_KEY || 'attendancex-rfid-secret';
+  const expected = process.env.RFID_API_KEY;
+  if (!expected) return false;
   const auth = req.headers['authorization'] || '';
-  const given = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
-  if (!given) return false;
+  const given = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   const a = Buffer.from(given);
   const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
@@ -983,28 +959,26 @@ const rfidKeyOk = (req) => {
 
 app.post('/api/attendance/rfid-mark', async (req, res) => {
   try {
+    if (!process.env.RFID_API_KEY) {
+      return res.status(503).json({ error: 'RFID_API_KEY is not set on the server (.env)' });
+    }
     if (!rfidKeyOk(req)) {
-      return res.status(401).json({ error: 'Invalid or missing RFID API key. Send header: Authorization: Bearer <RFID_API_KEY>' });
+      return res.status(401).json({ error: 'Invalid API key' });
     }
 
-    const { student_uid, enrolment_number, enrollment_number, class_id } = req.body || {};
-    const identifier = student_uid || enrolment_number || enrollment_number;
-
-    if (!identifier) {
-      return res.status(400).json({ error: 'student_uid or enrolment_number is required' });
+    const { student_uid, class_id } = req.body || {};
+    if (!student_uid || !class_id) {
+      return res.status(400).json({ error: 'student_uid and class_id are required' });
     }
 
-    const cls = class_id
-      ? await getQuery('SELECT * FROM classes WHERE id = ?', [class_id])
-      : await getQuery('SELECT * FROM classes ORDER BY id ASC LIMIT 1');
-
+    const cls = await getQuery('SELECT * FROM classes WHERE id = ?', [class_id]);
     if (!cls) {
-      return res.status(404).json({ error: class_id ? `Class ${class_id} not found` : 'No active classes found' });
+      return res.status(404).json({ error: `Class ${class_id} not found` });
     }
 
-    const student = await getQuery('SELECT * FROM students WHERE uid = ? OR enrolment_number = ?', [identifier, identifier]);
+    const student = await getQuery('SELECT * FROM students WHERE uid = ?', [student_uid]);
     if (!student) {
-      return res.status(404).json({ error: `Student with UID or Enrolment '${identifier}' not found` });
+      return res.status(404).json({ error: `Student ${student_uid} not found` });
     }
 
     const date = localDateString();
@@ -1176,34 +1150,20 @@ app.get('/api/attendance/lock-status', async (req, res) => {
       return res.status(400).json({ error: 'Date query param is required' });
     }
 
-    // Auto cleanup any duplicate sessions on this date so strictly 1 session survives
-    await cleanupDuplicateDailySessions();
-
     const lock = await getQuery(
       'SELECT * FROM attendance_locks WHERE date = ? AND department = ?',
       [date, department]
     );
 
-    // Compute count of present / absent records on this date for the single latest session
-    const latestSession = await getQuery(`
-      SELECT subject_name, session_type
+    // Also compute count of present / absent records on this date
+    const summary = await getQuery(`
+      SELECT 
+        COUNT(*) as total_records,
+        COUNT(CASE WHEN status = 'Present' THEN 1 END) as present_count,
+        COUNT(CASE WHEN status = 'Absent' THEN 1 END) as absent_count
       FROM attendance_records
       WHERE date = ? AND department = ?
-      ORDER BY id DESC
-      LIMIT 1
     `, [date, department]);
-
-    let summary = { total_records: 0, present_count: 0, absent_count: 0 };
-    if (latestSession) {
-      summary = await getQuery(`
-        SELECT 
-          COUNT(*) as total_records,
-          COUNT(CASE WHEN status = 'Present' THEN 1 END) as present_count,
-          COUNT(CASE WHEN status = 'Absent' THEN 1 END) as absent_count
-        FROM attendance_records
-        WHERE date = ? AND department = ? AND subject_name = ? AND session_type = ?
-      `, [date, department, latestSession.subject_name, latestSession.session_type]);
-    }
 
     // Calculate default next date if not set
     const calculatedNext = computeNextDay(date);
@@ -1356,20 +1316,7 @@ app.get('/api/attendance/records', async (req, res) => {
       sql += ' AND date = ?';
       params.push(date);
     }
-    if (date && !subject_name) {
-      const latestSession = await getQuery(`
-        SELECT subject_name, session_type
-        FROM attendance_records
-        WHERE date = ? AND department = ?
-        ORDER BY id DESC
-        LIMIT 1
-      `, [date, department]);
-
-      if (latestSession) {
-        sql += ' AND subject_name = ? AND session_type = ?';
-        params.push(latestSession.subject_name, latestSession.session_type);
-      }
-    } else if (subject_name) {
+    if (subject_name) {
       sql += ' AND subject_name = ?';
       params.push(subject_name);
     }
@@ -1435,8 +1382,6 @@ app.get('/api/department/stats', async (req, res) => {
 /* ==========================================================================
    DNN FACE RECOGNITION & ENROLLMENT SYSTEM
    ========================================================================== */
-
-// Helper to resolve the root FACE_DB_PATH directory from environment or fallback
 const getFaceDbPath = () => {
   const envPath = process.env.FACE_DB_PATH;
   if (!envPath) {
@@ -1445,17 +1390,15 @@ const getFaceDbPath = () => {
   return path.isAbsolute(envPath) ? envPath : path.resolve(__dirname, envPath);
 };
 
-// Clear cached embeddings so DNN face recognition model recomputes with new enrolled photos
+// Clear cached embeddings so DNN model recalculates embeddings on new photos
 const refreshOrClearEmbeddingsCache = async (baseDir) => {
   const deletedFiles = [];
   try {
     if (!fs.existsSync(baseDir)) return deletedFiles;
-
     const entries = await fs.promises.readdir(baseDir, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isFile()) {
         const name = entry.name.toLowerCase();
-        // Common cache patterns created by face recognition models (DeepFace representations_*.pkl, embeddings.*, encodings.pickle, *.npy, etc.)
         if (
           name.startsWith('representations_') ||
           name.includes('embedding') ||
@@ -1468,66 +1411,31 @@ const refreshOrClearEmbeddingsCache = async (baseDir) => {
           try {
             await fs.promises.unlink(fullPath);
             deletedFiles.push(fullPath);
-            console.log(`[FACE CACHE] Cleared cached model embeddings file: ${entry.name}`);
-          } catch (delErr) {
-            console.warn(`[FACE CACHE] Could not delete ${fullPath}:`, delErr.message);
-          }
+          } catch (e) {}
         }
-      } else if (entry.isDirectory() && (entry.name === '.cache' || entry.name === 'cache' || entry.name === '__pycache__')) {
+      } else if (entry.isDirectory() && (entry.name === '.cache' || entry.name === 'cache')) {
         const cacheDir = path.join(baseDir, entry.name);
         try {
           await fs.promises.rm(cacheDir, { recursive: true, force: true });
           deletedFiles.push(cacheDir);
-          console.log(`[FACE CACHE] Cleared cache directory: ${entry.name}`);
-        } catch (delErr) {
-          console.warn(`[FACE CACHE] Could not delete cache dir ${cacheDir}:`, delErr.message);
-        }
+        } catch (e) {}
       }
-    }
-
-    // Check if an external custom cache path is defined in environment variables
-    if (process.env.FACE_CACHE_PATH && fs.existsSync(process.env.FACE_CACHE_PATH)) {
-      try {
-        const customPath = path.resolve(process.env.FACE_CACHE_PATH);
-        const stat = await fs.promises.stat(customPath);
-        if (stat.isDirectory()) {
-          await fs.promises.rm(customPath, { recursive: true, force: true });
-        } else {
-          await fs.promises.unlink(customPath);
-        }
-        deletedFiles.push(customPath);
-        console.log(`[FACE CACHE] Cleared external cache path: ${customPath}`);
-      } catch (e) {
-        console.warn(`[FACE CACHE] Error removing custom cache:`, e.message);
-      }
-    }
-
-    // Optional: trigger webhook if face verification server exposes a reload URL
-    if (process.env.FACE_MODEL_RELOAD_URL) {
-      try {
-        fetch(process.env.FACE_MODEL_RELOAD_URL, { method: 'POST' }).catch(() => {});
-        console.log(`[FACE CACHE] Triggered model reload URL: ${process.env.FACE_MODEL_RELOAD_URL}`);
-      } catch {}
     }
   } catch (err) {
-    console.error('[FACE CACHE] Error during cache refresh/cleanup:', err);
+    console.error('Error clearing cached embeddings:', err);
   }
   return deletedFiles;
 };
 
-// POST /api/face/enroll: Receives { uid, image } and saves image as <FACE_DB_PATH>/<uid>/<timestamp>.jpg
+// POST /api/face/enroll: Saves <FACE_DB_PATH>/<uid>.jpg (for OpenCV SFace/YuNet) and <FACE_DB_PATH>/<uid>/<timestamp>.jpg
 app.post('/api/face/enroll', async (req, res) => {
   try {
     const { uid, image } = req.body || {};
-
-    // 1. Validate UID - prevent path traversal
     if (!uid || typeof uid !== 'string' || !uid.trim()) {
       return res.status(400).json({ error: 'Student UID is required' });
     }
-
     const cleanUid = uid.trim();
-
-    // Disallow path traversal characters: / \ .. null-byte or anything outside safe characters
+    // Prevent path traversal
     if (
       cleanUid.includes('..') ||
       cleanUid.includes('/') ||
@@ -1535,40 +1443,36 @@ app.post('/api/face/enroll', async (req, res) => {
       cleanUid.includes('\0') ||
       !/^[a-zA-Z0-9_\-]+$/.test(cleanUid)
     ) {
-      return res.status(400).json({
-        error: 'Invalid UID format: must only contain alphanumeric characters, hyphens, and underscores'
-      });
+      return res.status(400).json({ error: 'Invalid UID format' });
     }
-
-    // 2. Validate image data
     if (!image || typeof image !== 'string') {
-      return res.status(400).json({ error: 'Image data is required (base64 string or Data URL)' });
+      return res.status(400).json({ error: 'Image data is required' });
     }
-
     let base64Data = image;
     if (base64Data.includes(',')) {
       base64Data = base64Data.split(',')[1];
     }
-
     const imageBuffer = Buffer.from(base64Data, 'base64');
     if (!imageBuffer || imageBuffer.length === 0) {
-      return res.status(400).json({ error: 'Invalid or empty image buffer' });
+      return res.status(400).json({ error: 'Invalid image buffer' });
     }
-
-    // 3. Resolve target directory and verify safe boundary
     const baseDir = getFaceDbPath();
+    if (!fs.existsSync(baseDir)) {
+      await fs.promises.mkdir(baseDir, { recursive: true });
+    }
     const targetDir = path.resolve(baseDir, cleanUid);
-
-    // Strictly ensure targetDir does not escape baseDir
+    // Verify boundaries
     const relative = path.relative(baseDir, targetDir);
     if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-      return res.status(400).json({ error: 'Path traversal attempt detected in UID' });
+      return res.status(400).json({ error: 'Path traversal detected in UID' });
     }
 
-    // Create folder if missing (<FACE_DB_PATH>/<uid>)
-    await fs.promises.mkdir(targetDir, { recursive: true });
+    // 1. Save directly into baseDir as <uid>.jpg so OpenCV DNN can load it immediately
+    const directModelPath = path.resolve(baseDir, `${cleanUid}.jpg`);
+    await fs.promises.writeFile(directModelPath, imageBuffer);
 
-    // 4. Save image as <FACE_DB_PATH>/<uid>/<timestamp>.jpg
+    // 2. Also save into history subfolder <uid>/<timestamp>.jpg
+    await fs.promises.mkdir(targetDir, { recursive: true });
     const timestamp = Date.now();
     let filename = `${timestamp}.jpg`;
     let filePath = path.join(targetDir, filename);
@@ -1577,59 +1481,81 @@ app.post('/api/face/enroll', async (req, res) => {
       filename = `${timestamp}_${counter++}.jpg`;
       filePath = path.join(targetDir, filename);
     }
-
     await fs.promises.writeFile(filePath, imageBuffer);
-    console.log(`[FACE ENROLL] Saved face photo for ${cleanUid} -> ${filename} (${imageBuffer.length} bytes)`);
 
-    // 5. Refresh/delete model's cached embeddings so new photos are picked up
-    const deletedCache = await refreshOrClearEmbeddingsCache(baseDir);
+    // Clear cached embeddings so DNN recalculates
+    await refreshOrClearEmbeddingsCache(baseDir);
 
-    // 6. Read updated photo count for this student
-    const files = await fs.promises.readdir(targetDir);
-    const photoFiles = files.filter(f => /\.(jpe?g|png|webp)$/i.test(f)).sort();
+    const subFiles = (await fs.promises.readdir(targetDir)).filter(f => /\.(jpe?g|png|webp|bmp)$/i.test(f));
+    const allPhotos = Array.from(new Set([`${cleanUid}.jpg`, ...subFiles])).sort();
 
     return res.status(200).json({
       success: true,
       message: 'Face photo saved successfully',
       uid: cleanUid,
-      filename,
-      photoCount: photoFiles.length,
-      savedPhotos: photoFiles,
-      cacheCleared: deletedCache.length > 0
+      filename: `${cleanUid}.jpg`,
+      photoCount: allPhotos.length,
+      savedPhotos: allPhotos
     });
   } catch (error) {
     console.error('Face enrollment error:', error);
-    res.status(500).json({ error: error.message || 'Failed to save face enrollment photo' });
+    res.status(500).json({ error: error.message || 'Failed to save face photo' });
   }
 });
 
-// GET /api/face/count/:uid: Returns count and list of enrolled photos for a student
+// GET /api/face/count/:uid
 app.get('/api/face/count/:uid', async (req, res) => {
   try {
     const { uid } = req.params;
-    if (!uid || typeof uid !== 'string' || !uid.trim() || !/^[a-zA-Z0-9_\-]+$/.test(uid.trim())) {
+    if (!uid || !/^[a-zA-Z0-9_\-]+$/.test(uid.trim())) {
       return res.status(400).json({ error: 'Invalid UID format' });
     }
-
     const cleanUid = uid.trim();
     const baseDir = getFaceDbPath();
-    const targetDir = path.resolve(baseDir, cleanUid);
-    const relative = path.relative(baseDir, targetDir);
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-      return res.status(400).json({ error: 'Invalid UID' });
-    }
-
-    if (!fs.existsSync(targetDir)) {
+    if (!fs.existsSync(baseDir)) {
       return res.json({ uid: cleanUid, photoCount: 0, photos: [] });
     }
 
-    const files = await fs.promises.readdir(targetDir);
-    const photos = files.filter(f => /\.(jpe?g|png|webp)$/i.test(f)).sort();
-    return res.json({ uid: cleanUid, photoCount: photos.length, photos });
+    const photos = [];
+    // Check direct file in baseDir (e.g. STU-COMP-052.jpg)
+    for (const ext of ['.jpg', '.jpeg', '.png', '.bmp']) {
+      const directFile = path.resolve(baseDir, `${cleanUid}${ext}`);
+      if (fs.existsSync(directFile)) {
+        photos.push(`${cleanUid}${ext}`);
+      }
+    }
+
+    // Check subfolder in baseDir (e.g. STU-COMP-052/...)
+    const targetDir = path.resolve(baseDir, cleanUid);
+    if (fs.existsSync(targetDir) && fs.statSync(targetDir).isDirectory()) {
+      const files = await fs.promises.readdir(targetDir);
+      const subPhotos = files.filter(f => /\.(jpe?g|png|webp|bmp)$/i.test(f));
+      for (const sp of subPhotos) {
+        if (!photos.includes(sp)) {
+          photos.push(sp);
+        }
+      }
+    }
+
+    return res.json({ uid: cleanUid, photoCount: photos.length, photos: photos.sort() });
   } catch (error) {
-    console.error('Face count retrieval error:', error);
-    res.status(500).json({ error: 'Failed to retrieve face enrollment count' });
+    res.status(500).json({ error: 'Failed to retrieve face count' });
   }
+});
+
+// Catch-all for undefined /api routes so they always return JSON instead of HTML
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.originalUrl}` });
+});
+
+// Global JSON error handler (handles PayloadTooLargeError, invalid JSON, etc.)
+app.use((err, req, res, next) => {
+  console.error('Unhandled server error:', err);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({
+    error: err.message || 'Internal Server Error',
+    code: err.code || 'SERVER_ERROR'
+  });
 });
 
 app.listen(PORT, () => {
@@ -1638,3 +1564,4 @@ app.listen(PORT, () => {
   console.log(`Connected to SQLite Database: attendancex.db`);
   console.log(`=========================================`);
 });
+

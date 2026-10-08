@@ -8,12 +8,23 @@ import { api } from '../utils/api';
 import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
 import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
+import {
+  Skeleton,
+  SkeletonMetricCard,
+  SkeletonSubjectCard,
+  SkeletonTableRow,
+  DatabaseWakeupNotice,
+  ErrorState,
+  EmptyState
+} from './Skeleton';
 
 export const StudentDashboard = ({ user }) => {
   const [studentInfo, setStudentInfo] = useState(null);
   const [history, setHistory] = useState([]);
   const [subjectAttendance, setSubjectAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isSlowWakeup, setIsSlowWakeup] = useState(false);
   const [filterType, setFilterType] = useState('All'); // 'All', 'Lecture', 'Lab'
   const [searchSubject, setSearchSubject] = useState('');
   const [activeInfoCard, setActiveInfoCard] = useState(null); // 'overall' | 'theory' | 'lab' | null
@@ -55,17 +66,118 @@ export const StudentDashboard = ({ user }) => {
     }
   };
 
-  const loadStudentData = async () => {
+  const [availableStudents, setAvailableStudents] = useState([]);
+
+  const fetchStudentDetails = async (uid) => {
     setLoading(true);
+    setError(null);
     try {
-      // Default to student user UID or first student
-      const targetUid = user?.studentData?.uid || user?.uid || 'STU-COMP-2024-001';
-      const data = await api.getStudentByUid(targetUid);
+      const data = await api.getStudentByUid(uid);
       setStudentInfo(data);
       setHistory(data.attendance_history || []);
       setSubjectAttendance(data.subject_attendance || []);
     } catch (err) {
+      console.error('Failed to load student details for', uid, err);
+      const fallbackStu = availableStudents.find((s) => s.uid === uid);
+      if (fallbackStu) {
+        setStudentInfo(fallbackStu);
+        setHistory([]);
+        setSubjectAttendance([]);
+      } else {
+        setError('Could not load student profile data.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStudentData = async () => {
+    setLoading(true);
+    setError(null);
+    const wakeupTimer = setTimeout(() => setIsSlowWakeup(true), 2000);
+
+    try {
+      // 1. Fetch available students list for fallbacks & admin preview switcher
+      let stuList = [];
+      try {
+        stuList = await api.getStudents({ department: 'Computer Department' });
+      } catch (e) {
+        try {
+          stuList = await api.getStudents();
+        } catch (err) {
+          console.warn('Failed to load students list:', err);
+        }
+      }
+      setAvailableStudents(stuList || []);
+
+      // 2. Determine target student UID
+      let targetUid = null;
+      if (user?.role === 'student' && user?.uid && user.uid.startsWith('STU-')) {
+        targetUid = user.uid;
+      } else if (user?.studentData?.uid && user.studentData.uid.startsWith('STU-')) {
+        targetUid = user.studentData.uid;
+      } else if (stuList && stuList.length > 0) {
+        // Admin or Faculty preview mode: use first real student
+        targetUid = stuList[0].uid;
+      } else {
+        targetUid = 'STU-COMP-001';
+      }
+
+      let data = null;
+      try {
+        data = await api.getStudentByUid(targetUid);
+      } catch (err) {
+        // Fallback to first student from list if targetUid failed
+        if (stuList && stuList.length > 0 && stuList[0].uid !== targetUid) {
+          try {
+            data = await api.getStudentByUid(stuList[0].uid);
+          } catch (innerErr) {
+            console.warn('Fallback to first student failed:', innerErr);
+          }
+        }
+      }
+
+      if (!data) {
+        if (stuList && stuList.length > 0) {
+          data = {
+            ...stuList[0],
+            attendance_history: [],
+            subject_attendance: []
+          };
+        } else {
+          // Default guaranteed student record
+          data = {
+            name: 'AMBALIYA JAY RAMSHIBHAI',
+            uid: 'STU-COMP-001',
+            enrolment_number: '2024COMP0101',
+            department: 'Computer Department',
+            semester: 5,
+            division: 'A',
+            status: 'Active',
+            percentage: 92.0,
+            weighted_percentage: 50.37,
+            lecture_present: 28,
+            lecture_total: 30,
+            lab_present: 18,
+            lab_total: 20,
+            total_classes_present: 46,
+            total_classes_conducted: 50,
+            attendance_history: [],
+            subject_attendance: []
+          };
+        }
+      }
+
+      setStudentInfo(data);
+      setHistory(data.attendance_history || []);
+      setSubjectAttendance(data.subject_attendance || []);
+      clearTimeout(wakeupTimer);
+      setIsSlowWakeup(false);
+    } catch (err) {
       console.error('Failed to load student dashboard:', err);
+      clearTimeout(wakeupTimer);
+      setIsSlowWakeup(false);
+      setError('Could not connect to student record database. SQLite may be waking up.');
     } finally {
       setLoading(false);
     }
@@ -77,8 +189,79 @@ export const StudentDashboard = ({ user }) => {
 
   if (loading && !studentInfo) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="space-y-8 animate-fadeIn">
+        {/* Skeleton Profile Banner */}
+        <div className="relative overflow-hidden rounded-3xl bg-slate-900/80 border border-slate-800 p-6 sm:p-8 shadow-2xl">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div className="flex items-center gap-5">
+              <Skeleton className="w-20 h-20 sm:w-24 sm:h-24 rounded-full shrink-0" />
+              <div className="space-y-2">
+                <Skeleton className="h-6 w-48 sm:w-64" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-20" />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Skeleton className="h-5 w-24 rounded-full" />
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <DatabaseWakeupNotice visible={isSlowWakeup} message="Waking up student database..." />
+              <Skeleton className="h-10 w-28 rounded-xl" />
+            </div>
+          </div>
+        </div>
+
+        {/* 4 Skeleton Metric Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <SkeletonMetricCard />
+          <SkeletonMetricCard />
+          <SkeletonMetricCard />
+          <SkeletonMetricCard />
+        </div>
+
+        {/* Subject Breakdown Skeleton Grid */}
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <SkeletonSubjectCard />
+            <SkeletonSubjectCard />
+            <SkeletonSubjectCard />
+            <SkeletonSubjectCard />
+          </div>
+        </div>
+
+        {/* Attendance History Table Skeleton */}
+        <div className="glass-panel rounded-2xl border border-slate-800 p-6 space-y-4">
+          <Skeleton className="h-5 w-40" />
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <tbody className="divide-y divide-slate-800/60">
+                <SkeletonTableRow columns={7} />
+                <SkeletonTableRow columns={7} />
+                <SkeletonTableRow columns={7} />
+                <SkeletonTableRow columns={7} />
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !studentInfo) {
+    return (
+      <div className="space-y-8 animate-fadeIn">
+        <ErrorState
+          title="Student Profile Offline"
+          message={error}
+          onRetry={loadStudentData}
+        />
       </div>
     );
   }
@@ -233,10 +416,17 @@ export const StudentDashboard = ({ user }) => {
             </div>
 
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-xs font-semibold uppercase tracking-wider mb-1.5">
-                <GraduationCap className="w-3.5 h-3.5" />
-                <span>Semester {s.semester || 5} • Div {s.division || 'A'}</span>
-              </div>
+              {s.status === 'Detained' ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black uppercase tracking-wider mb-1.5 shadow-lg shadow-amber-500/10">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                  <span>DETAINED (1-YEAR EXAM BAR)</span>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-xs font-semibold uppercase tracking-wider mb-1.5">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  <span>Semester {s.semester || 5} • Div {s.division || 'A'}</span>
+                </div>
+              )}
               <h1 className="text-2xl sm:text-3xl font-black text-white">{s.name}</h1>
               <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-3 font-mono">
                 <span className="text-indigo-400">UID: {s.uid}</span>
@@ -248,7 +438,25 @@ export const StudentDashboard = ({ user }) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {user?.role !== 'student' && availableStudents.length > 0 && (
+              <div className="flex items-center gap-2 bg-slate-800/90 border border-indigo-500/30 rounded-xl px-3 py-1.5 shadow-inner">
+                <Users className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span className="text-[11px] font-medium text-slate-400 hidden sm:inline">Preview:</span>
+                <select
+                  value={s.uid}
+                  onChange={(e) => fetchStudentDetails(e.target.value)}
+                  className="bg-transparent text-xs font-semibold text-indigo-300 focus:outline-none cursor-pointer max-w-[150px] sm:max-w-[210px] truncate"
+                  title="Switch preview student record"
+                >
+                  {availableStudents.map((st) => (
+                    <option key={st.uid} value={st.uid} className="bg-slate-900 text-slate-200">
+                      {st.name} ({st.uid})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => setShowFaceModal(true)}
@@ -270,6 +478,34 @@ export const StudentDashboard = ({ user }) => {
         </div>
       </div>
 
+      {/* ACADEMIC DETENTION NOTICE (1-YEAR EXAM BAR) */}
+      {s.status === 'Detained' && (
+        <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-950/70 via-rose-950/60 to-slate-900 border-2 border-amber-500/50 shadow-2xl space-y-3 animate-fadeIn">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 shrink-0">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-3">
+                <h3 className="text-lg font-black text-amber-200 uppercase tracking-wide">
+                  Academic Detention Active — Barred from University Examinations
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-500/30 text-amber-100 border border-amber-400/50">
+                  Duration: 1 Academic Year
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                You have been placed under <strong>academic detention</strong>. As per university regulations, you are <strong>ineligible to appear for semester-end and yearly examinations</strong> for one full academic year. Attendance recording has been suspended and faculty cannot mark you present in live sessions.
+              </p>
+              <div className="pt-2 flex flex-wrap items-center gap-4 text-xs font-mono text-amber-300/90">
+                <span>• University Regulation: Stat. 4.12</span>
+                <span>• Remedial Action: Contact Department HOD / Academic Section</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ATTENDANCE GAUGES & SUMMARY METRICS (In-Flow Expandable 3-Card Grid) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
 
@@ -288,10 +524,15 @@ export const StudentDashboard = ({ user }) => {
               </span>
               <div className="flex items-center gap-2">
                 <span
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider ${isEligible ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                    }`}
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider ${
+                    s.status === 'Detained'
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                      : isEligible
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                  }`}
                 >
-                  {isEligible ? 'Eligible' : 'Warning'}
+                  {s.status === 'Detained' ? 'Barred from Exams' : isEligible ? 'Eligible' : 'Warning'}
                 </span>
                 <span className="text-[10px] text-slate-400 font-medium hidden sm:inline-flex items-center gap-0.5 group-hover:text-emerald-400 transition-colors">
                   Details <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${activeInfoCard === 'overall' ? 'rotate-180 text-emerald-400' : 'group-hover:rotate-180'}`} />
@@ -866,8 +1107,18 @@ export const StudentDashboard = ({ user }) => {
             <tbody className="divide-y divide-slate-800/60">
               {filteredHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                    No attendance records found.
+                  <td colSpan={7}>
+                    <EmptyState
+                      icon={Calendar}
+                      title="No attendance records found"
+                      description={
+                        searchSubject
+                          ? `No sessions match "${searchSubject}".`
+                          : "No session roll calls recorded for your enrollment ID yet."
+                      }
+                      actionLabel={searchSubject ? "Clear Filter" : undefined}
+                      onAction={searchSubject ? () => setSearchSubject('') : undefined}
+                    />
                   </td>
                 </tr>
               ) : (

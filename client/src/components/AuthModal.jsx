@@ -97,7 +97,11 @@ export const AuthModal = ({
       const res = await api.login(loginEmail, password, selectedRole);
       onSuccess(res.user, res.token);
     } catch (err) {
-      setError(err.message || 'Authentication failed. Please verify credentials.');
+      if (err.message === 'Failed to fetch' || err.message?.includes('fetch') || err.message?.includes('network')) {
+        setError('Backend server is offline or unreachable on port 5000. Please ensure the backend server is running (run npm run server or start.bat).');
+      } else {
+        setError(err.message || 'Authentication failed. Please verify credentials.');
+      }
     } finally {
       setLoading(false);
     }

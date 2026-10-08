@@ -4,16 +4,26 @@ import {
   TrendingUp, Download, RefreshCw, Sparkles, Building,
   PieChart, Search, ShieldCheck, Lock, Unlock, Calendar,
   ShieldAlert, CheckCircle2, ArrowRight, Clock,
-  Eye, X, FileSpreadsheet, Printer, XCircle
+  Eye, X, FileSpreadsheet, Printer, XCircle, Ban
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
 import { cleanAvatarUrl } from '../utils/avatarUtils';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
+import {
+  Skeleton,
+  SkeletonMetricCard,
+  SkeletonTableRow,
+  DatabaseWakeupNotice,
+  ErrorState,
+  EmptyState
+} from './Skeleton';
 
 export const HodDashboard = ({ user }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isSlowWakeup, setIsSlowWakeup] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'locks', 'students', 'faculties', 'defaulters'
 
@@ -69,13 +79,21 @@ export const HodDashboard = ({ user }) => {
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
+    const wakeupTimer = setTimeout(() => setIsSlowWakeup(true), 2000);
+
     try {
       const stats = await api.getDepartmentStats('Computer Department');
       setData(stats);
       await loadLockStatus(selectedDate);
       await loadAllLocks();
+      clearTimeout(wakeupTimer);
+      setIsSlowWakeup(false);
     } catch (err) {
       console.error('Failed to load HOD stats:', err);
+      clearTimeout(wakeupTimer);
+      setIsSlowWakeup(false);
+      setError('Could not connect to department telemetry. SQLite database may be waking up.');
     } finally {
       setLoading(false);
     }
@@ -134,6 +152,30 @@ export const HodDashboard = ({ user }) => {
       loadData();
     } catch (err) {
       notify(err.message || 'Failed to update attendance status', 'error');
+    }
+  };
+
+  const handleToggleDetainStudent = async (studentUid, currentStatus) => {
+    const isDetained = currentStatus === 'Detained';
+    const newStatus = isDetained ? 'Active' : 'Detained';
+    const confirmMsg = isDetained
+      ? `Revoke detention and reinstate student (${studentUid}) back to Active status?`
+      : `DETAIN this student (${studentUid}) for 1 academic year?\n\nThey will be BARRED from appearing in examinations and cannot be marked present in daily attendance.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await api.updateStudent(studentUid, { status: newStatus });
+      setStudents((prev) => prev.map((s) => (s.uid === studentUid ? { ...s, status: newStatus } : s)));
+      notify(
+        isDetained
+          ? `Reinstated student ${studentUid} to Active status.`
+          : `Student ${studentUid} has been DETAINED for 1 academic year (Exam Barred).`,
+        isDetained ? 'success' : 'error'
+      );
+      loadData();
+    } catch (err) {
+      notify(err.message || 'Failed to update student detention status', 'error');
     }
   };
 
@@ -231,9 +273,10 @@ export const HodDashboard = ({ user }) => {
           </div>
 
           <div className="flex items-center gap-3">
+            <DatabaseWakeupNotice visible={isSlowWakeup} message="Connecting to HOD executive metrics..." />
             <button
               onClick={loadData}
-              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
               title="Refresh Department Stats"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -242,51 +285,71 @@ export const HodDashboard = ({ user }) => {
         </div>
       </div>
 
+      {/* Global Error State */}
+      {error && !data && !loading && (
+        <ErrorState
+          title="Department Telemetry Offline"
+          message={error}
+          onRetry={loadData}
+        />
+      )}
+
       {/* DEPARTMENT STATS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800">
-          <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
-            <span>Dept Attendance Avg</span>
-            <TrendingUp className="w-4 h-4 text-purple-400" />
-          </div>
-          <div className="text-3xl font-black text-purple-300 mt-3">
-            {stats.avgAttendancePercentage}%
-          </div>
-          <div className="text-xs text-slate-400 mt-1">Computer Department Index</div>
-        </div>
+        {loading ? (
+          <>
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+          </>
+        ) : (
+          <>
+            <div className="glass-panel p-5 rounded-2xl border border-slate-800 fade-in-content">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
+                <span>Dept Attendance Avg</span>
+                <TrendingUp className="w-4 h-4 text-purple-400" />
+              </div>
+              <div className="text-3xl font-black text-purple-300 mt-3">
+                {stats.avgAttendancePercentage}%
+              </div>
+              <div className="text-xs text-slate-400 mt-1">Computer Department Index</div>
+            </div>
 
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800">
-          <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
-            <span>Total Enrolled</span>
-            <Users className="w-4 h-4 text-indigo-400" />
-          </div>
-          <div className="text-3xl font-black text-white mt-3">
-            {stats.totalStudents}
-          </div>
-          <div className="text-xs text-slate-400 mt-1">Semester 5 Batch</div>
-        </div>
+            <div className="glass-panel p-5 rounded-2xl border border-slate-800 fade-in-content">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
+                <span>Total Enrolled</span>
+                <Users className="w-4 h-4 text-indigo-400" />
+              </div>
+              <div className="text-3xl font-black text-white mt-3">
+                {stats.totalStudents}
+              </div>
+              <div className="text-xs text-slate-400 mt-1">Semester 5 Batch</div>
+            </div>
 
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800">
-          <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
-            <span>Active Faculty</span>
-            <BookOpen className="w-4 h-4 text-blue-400" />
-          </div>
-          <div className="text-3xl font-black text-white mt-3">
-            {stats.totalFaculty}
-          </div>
-          <div className="text-xs text-slate-400 mt-1">Lectures & Labs Assigned</div>
-        </div>
+            <div className="glass-panel p-5 rounded-2xl border border-slate-800 fade-in-content">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
+                <span>Active Faculty</span>
+                <BookOpen className="w-4 h-4 text-blue-400" />
+              </div>
+              <div className="text-3xl font-black text-white mt-3">
+                {stats.totalFaculty}
+              </div>
+              <div className="text-xs text-slate-400 mt-1">Lectures & Labs Assigned</div>
+            </div>
 
-        <div className="glass-panel p-5 rounded-2xl border border-amber-500/30 bg-amber-950/10">
-          <div className="flex items-center justify-between text-xs font-semibold uppercase text-amber-400">
-            <span>Attendance Defaulters</span>
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-3xl font-black text-amber-400 mt-3">
-            {stats.lowAttendanceCount}
-          </div>
-          <div className="text-xs text-amber-400/80 mt-1">&lt; 75% attendance threshold</div>
-        </div>
+            <div className="glass-panel p-5 rounded-2xl border border-amber-500/30 bg-amber-950/10 fade-in-content">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase text-amber-400">
+                <span>Attendance Defaulters</span>
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="text-3xl font-black text-amber-400 mt-3">
+                {stats.lowAttendanceCount}
+              </div>
+              <div className="text-xs text-amber-400/80 mt-1">&lt; 75% attendance threshold</div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* TOAST NOTIFICATION */}
@@ -986,10 +1049,21 @@ export const HodDashboard = ({ user }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {allLocks.length === 0 ? (
+                {loading ? (
+                  <>
+                    <SkeletonTableRow columns={6} />
+                    <SkeletonTableRow columns={6} />
+                    <SkeletonTableRow columns={6} />
+                    <SkeletonTableRow columns={6} />
+                  </>
+                ) : allLocks.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-8 text-center text-slate-500 text-xs">
-                      No locked sessions recorded yet. Use the "Final / Freeze" button on the Overview tab to freeze today's attendance.
+                    <td colSpan="6">
+                      <EmptyState
+                        icon={Lock}
+                        title="No locked sessions recorded yet"
+                        description="Use the 'Final / Freeze Attendance' action on the Overview tab to freeze daily attendance."
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -1101,8 +1175,33 @@ export const HodDashboard = ({ user }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {filteredStudents.map((s) => (
-                  <tr key={s.uid} className="hover:bg-slate-900/40 transition-colors">
+                {loading ? (
+                  <>
+                    <SkeletonTableRow columns={7} />
+                    <SkeletonTableRow columns={7} />
+                    <SkeletonTableRow columns={7} />
+                    <SkeletonTableRow columns={7} />
+                    <SkeletonTableRow columns={7} />
+                  </>
+                ) : filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan="7">
+                      <EmptyState
+                        icon={Users}
+                        title="No students found matching filters"
+                        description={
+                          searchQuery
+                            ? `No students match "${searchQuery}".`
+                            : "No students currently registered in this department."
+                        }
+                        actionLabel={searchQuery ? "Clear Search" : undefined}
+                        onAction={searchQuery ? () => setSearchQuery('') : undefined}
+                      />
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map((s) => (
+                    <tr key={s.uid} className="hover:bg-slate-900/40 transition-colors fade-in-content">
                     <td className="px-6 py-4 min-w-[200px]">
                       <div className="flex items-center gap-3">
                         <img
@@ -1129,23 +1228,50 @@ export const HodDashboard = ({ user }) => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                        {s.status}
-                      </span>
+                      {s.status === 'Detained' ? (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 w-fit">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                          Detained (1-Yr Bar)
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                          {s.status || 'Active'}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => setFaceEnrollStudent({ uid: s.uid, name: s.name })}
-                        className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-                        title={`Enroll Face for ${s.name} (${s.uid})`}
-                      >
-                        <span className="text-sm">📷</span>
-                        <span>Enroll</span>
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleDetainStudent(s.uid, s.status)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1 border cursor-pointer ${
+                            s.status === 'Detained'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+                              : 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
+                          }`}
+                          title={
+                            s.status === 'Detained'
+                              ? 'Reinstate student (revoke detention)'
+                              : 'Detain student for 1 academic year (bar from exams & attendance)'
+                          }
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          <span>{s.status === 'Detained' ? 'Reinstate' : 'Detain'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setFaceEnrollStudent({ uid: s.uid, name: s.name })}
+                          className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                          title={`Enroll Face for ${s.name} (${s.uid})`}
+                        >
+                          <span className="text-sm">📷</span>
+                          <span>Enroll</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>

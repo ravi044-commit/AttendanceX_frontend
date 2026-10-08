@@ -2,17 +2,26 @@ import React, { useState, useEffect } from 'react';
 import {
   Users, UserPlus, Trash2, Filter, Search, Shield,
   GraduationCap, BookOpen, Crown, Building2, CheckCircle2,
-  AlertTriangle, RefreshCw, Sparkles, PieChart, Award
+  AlertTriangle, RefreshCw, Sparkles, PieChart, Award, Ban
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
+import {
+  SkeletonMetricCard,
+  SkeletonTableRow,
+  DatabaseWakeupNotice,
+  ErrorState,
+  EmptyState
+} from './Skeleton';
 
 export const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
   const [students, setStudents] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isSlowWakeup, setIsSlowWakeup] = useState(false);
   
   // Filters
   const [selectedRole, setSelectedRole] = useState('All');
@@ -44,17 +53,25 @@ export const AdminDashboard = () => {
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
+    const wakeupTimer = setTimeout(() => setIsSlowWakeup(true), 2000);
+
     try {
       const [usersData, studentsData, summaryData] = await Promise.all([
         api.getUsers({ department: selectedDept !== 'All' ? selectedDept : '' }),
         api.getStudents({ department: selectedDept !== 'All' ? selectedDept : '' }),
         api.getAttendanceSummary(selectedDept !== 'All' ? selectedDept : 'Computer Department')
       ]);
-      setUsers(usersData);
-      setStudents(studentsData);
-      setSummary(summaryData);
+      setUsers(usersData || []);
+      setStudents(studentsData || []);
+      setSummary(summaryData || null);
+      clearTimeout(wakeupTimer);
+      setIsSlowWakeup(false);
     } catch (err) {
       console.error('Failed to load admin data:', err);
+      clearTimeout(wakeupTimer);
+      setIsSlowWakeup(false);
+      setError('Failed to establish database telemetry. SQLite3 service may be initializing.');
       notify('Failed to load data from server', 'error');
     } finally {
       setLoading(false);
@@ -131,6 +148,30 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleToggleDetainStudent = async (studentUid, currentStatus) => {
+    const isDetained = currentStatus === 'Detained';
+    const newStatus = isDetained ? 'Active' : 'Detained';
+    const confirmMsg = isDetained
+      ? `Revoke detention and reinstate student (${studentUid}) back to Active status?`
+      : `DETAIN this student (${studentUid}) for 1 academic year?\n\nThey will be BARRED from appearing in examinations and cannot be marked present in daily attendance.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await api.updateStudent(studentUid, { status: newStatus });
+      setStudents((prev) => prev.map((s) => (s.uid === studentUid ? { ...s, status: newStatus } : s)));
+      notify(
+        isDetained
+          ? `Reinstated student ${studentUid} to Active status.`
+          : `Student ${studentUid} has been DETAINED for 1 academic year (Exam Barred).`,
+        isDetained ? 'success' : 'error'
+      );
+      loadData();
+    } catch (err) {
+      notify(err.message || 'Failed to update student detention status', 'error');
+    }
+  };
+
   // Combine & filter records
   const filteredUsers = users.filter((u) => {
     const matchesRole = selectedRole === 'All' || u.role.toLowerCase() === selectedRole.toLowerCase();
@@ -184,6 +225,7 @@ export const AdminDashboard = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <DatabaseWakeupNotice visible={isSlowWakeup} message="Connecting to SQLite database..." />
             <button
               onClick={() => setShowAddModal(true)}
               className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/25 transition-all"
@@ -193,7 +235,7 @@ export const AdminDashboard = () => {
             </button>
             <button
               onClick={loadData}
-              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
               title="Refresh Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -202,59 +244,79 @@ export const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Metric Cards */}
+      {/* Global Error Banner if initial fetch failed */}
+      {error && users.length === 0 && !loading && (
+        <ErrorState
+          title="Database Connection Offline"
+          message={error}
+          onRetry={loadData}
+        />
+      )}
+
+      {/* Metric Cards - Skeleton during loading, real when ready */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-slate-400">Computer Dept Students</span>
-            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
-              <GraduationCap className="w-5 h-5" />
+        {loading ? (
+          <>
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+          </>
+        ) : (
+          <>
+            <div className="glass-panel p-5 rounded-2xl border border-slate-800/80 fade-in-content">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase text-slate-400">Computer Dept Students</span>
+                <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-3 text-3xl font-black text-white">
+                {summary ? summary.totalStudents : students.length}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">Enrolled in 5th Semester</p>
             </div>
-          </div>
-          <div className="mt-3 text-3xl font-black text-white">
-            {summary ? summary.totalStudents : students.length}
-          </div>
-          <p className="text-xs text-slate-400 mt-1">Enrolled in 5th Semester</p>
-        </div>
 
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-slate-400">Dept Avg Attendance</span>
-            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-              <PieChart className="w-5 h-5" />
+            <div className="glass-panel p-5 rounded-2xl border border-slate-800/80 fade-in-content">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase text-slate-400">Dept Avg Attendance</span>
+                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                  <PieChart className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-3 text-3xl font-black text-emerald-400">
+                {summary ? summary.avgAttendance : 85}%
+              </div>
+              <p className="text-xs text-slate-400 mt-1">Lecture & Lab aggregate</p>
             </div>
-          </div>
-          <div className="mt-3 text-3xl font-black text-emerald-400">
-            {summary ? summary.avgAttendance : 85}%
-          </div>
-          <p className="text-xs text-slate-400 mt-1">Lecture & Lab aggregate</p>
-        </div>
 
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-slate-400">Faculty Members</span>
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-              <BookOpen className="w-5 h-5" />
+            <div className="glass-panel p-5 rounded-2xl border border-slate-800/80 fade-in-content">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase text-slate-400">Faculty Members</span>
+                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-3 text-3xl font-black text-white">
+                {summary ? summary.totalFaculty : 2}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">Active Professors & Tutors</p>
             </div>
-          </div>
-          <div className="mt-3 text-3xl font-black text-white">
-            {summary ? summary.totalFaculty : 2}
-          </div>
-          <p className="text-xs text-slate-400 mt-1">Active Professors & Tutors</p>
-        </div>
 
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-slate-400">Low Attendance (&lt;75%)</span>
-            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
-              <AlertTriangle className="w-5 h-5" />
+            <div className="glass-panel p-5 rounded-2xl border border-slate-800/80 fade-in-content">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase text-slate-400">Low Attendance (&lt;75%)</span>
+                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-3 text-3xl font-black text-amber-400">
+                {summary ? summary.lowAttendanceCount : 0}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">Requires HOD Attention</p>
             </div>
-          </div>
-          <div className="mt-3 text-3xl font-black text-amber-400">
-            {summary ? summary.lowAttendanceCount : 0}
-          </div>
-          <p className="text-xs text-slate-400 mt-1">Requires HOD Attention</p>
-        </div>
+          </>
+        )}
       </div>
 
       {/* FILTERS & SEARCH BAR */}
@@ -335,10 +397,28 @@ export const AdminDashboard = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {filteredUsers.length === 0 ? (
+              {loading ? (
+                <>
+                  <SkeletonTableRow columns={6} />
+                  <SkeletonTableRow columns={6} />
+                  <SkeletonTableRow columns={6} />
+                  <SkeletonTableRow columns={6} />
+                  <SkeletonTableRow columns={6} />
+                </>
+              ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                    No records found matching your filters.
+                  <td colSpan={6}>
+                    <EmptyState
+                      icon={Users}
+                      title="No matching members found"
+                      description={
+                        searchQuery
+                          ? `No members match "${searchQuery}" for role "${selectedRole}".`
+                          : "No records currently registered under this filter."
+                      }
+                      actionLabel={searchQuery ? "Clear Search Filter" : undefined}
+                      onAction={searchQuery ? () => setSearchQuery('') : undefined}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -394,10 +474,17 @@ export const AdminDashboard = () => {
 
                       {/* Status */}
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                          {studentInfo ? studentInfo.status : 'Active'}
-                        </span>
+                        {studentInfo?.status === 'Detained' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                            Detained (1-Yr Bar)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            {studentInfo ? studentInfo.status : 'Active'}
+                          </span>
+                        )}
                       </td>
 
                       {/* Overall Attendance Percentage */}
@@ -428,15 +515,35 @@ export const AdminDashboard = () => {
                       <td className="px-6 py-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
                           {(u.role === 'student' || (u.uid && u.uid.startsWith('STU-'))) && (
-                            <button
-                              type="button"
-                              onClick={() => setFaceEnrollTarget({ uid: u.uid, name: u.name })}
-                              className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-                              title={`Enroll Face for ${u.name} (${u.uid})`}
-                            >
-                              <span className="text-sm">📷</span>
-                              <span>Enroll</span>
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleDetainStudent(u.uid, studentInfo?.status)}
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 border cursor-pointer ${
+                                  studentInfo?.status === 'Detained'
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+                                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
+                                }`}
+                                title={
+                                  studentInfo?.status === 'Detained'
+                                    ? 'Revoke detention and reinstate student'
+                                    : 'Detain student for 1 academic year (bar from exams & attendance)'
+                                }
+                              >
+                                <Ban className="w-3.5 h-3.5" />
+                                <span>{studentInfo?.status === 'Detained' ? 'Reinstate' : 'Detain'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setFaceEnrollTarget({ uid: u.uid, name: u.name })}
+                                className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                                title={`Enroll Face for ${u.name} (${u.uid})`}
+                              >
+                                <span className="text-sm">📷</span>
+                                <span>Enroll</span>
+                              </button>
+                            </>
                           )}
                           <button
                             type="button"
@@ -513,16 +620,32 @@ export const AdminDashboard = () => {
               </div>
 
               {formData.role === 'student' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Enrolment Number</label>
-                  <input
-                    type="text"
-                    value={formData.enrolment_number}
-                    onChange={(e) => setFormData({ ...formData, enrolment_number: e.target.value })}
-                    placeholder="2024COMP0110"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono focus:border-indigo-500"
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Enrolment Number</label>
+                    <input
+                      type="text"
+                      value={formData.enrolment_number}
+                      onChange={(e) => setFormData({ ...formData, enrolment_number: e.target.value })}
+                      placeholder="2024COMP0110"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Academic Status</label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:border-indigo-500"
+                    >
+                      <option value="Active">Active (Eligible)</option>
+                      <option value="Detained">Detained (Barred from Exams - 1 Year)</option>
+                      <option value="On Leave">On Leave</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
+                  </div>
+                </>
               )}
 
               <div>

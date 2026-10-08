@@ -8,12 +8,22 @@ import {
 import { api } from '../utils/api';
 import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
 import { cleanAvatarUrl } from '../utils/avatarUtils';
+import {
+  Skeleton,
+  SkeletonMetricCard,
+  SkeletonRosterItem,
+  DatabaseWakeupNotice,
+  ErrorState,
+  EmptyState
+} from './Skeleton';
 
 export const FacultyDashboard = ({ user }) => {
   const [activeTab, setActiveTab] = useState('take'); // 'take' or 'history'
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isSlowWakeup, setIsSlowWakeup] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Take Attendance Session state
@@ -54,62 +64,83 @@ export const FacultyDashboard = ({ user }) => {
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
+    const wakeupTimer = setTimeout(() => setIsSlowWakeup(true), 2000);
+
     let loadedStudents = [];
     let loadedClasses = [];
     let loadedSessions = [];
 
     try {
-      loadedStudents = await api.getStudents({ department: 'Computer Department' });
-    } catch (err) {
-      console.warn('Failed to load students with department filter, trying all:', err);
       try {
-        loadedStudents = await api.getStudents({});
-      } catch (e) {
-        console.error('Failed to load students:', e);
+        loadedStudents = await api.getStudents({ department: 'Computer Department' });
+      } catch (err) {
+        console.warn('Failed to load students with department filter, trying all:', err);
+        try {
+          loadedStudents = await api.getStudents({});
+        } catch (e) {
+          console.error('Failed to load students:', e);
+        }
       }
-    }
 
-    try {
-      loadedClasses = await api.getClasses({ department: 'Computer Department' });
-    } catch (err) {
-      console.warn('Failed to load classes with dept filter, trying all:', err);
       try {
-        loadedClasses = await api.getClasses({});
-      } catch (e) {
-        console.error('Failed to load classes:', e);
+        loadedClasses = await api.getClasses({ department: 'Computer Department' });
+      } catch (err) {
+        console.warn('Failed to load classes with dept filter, trying all:', err);
+        try {
+          loadedClasses = await api.getClasses({});
+        } catch (e) {
+          console.error('Failed to load classes:', e);
+        }
       }
-    }
 
-    try {
-      loadedSessions = await api.getAttendanceSessions('Computer Department');
+      try {
+        loadedSessions = await api.getAttendanceSessions('Computer Department');
+      } catch (err) {
+        console.warn('Sessions list endpoint not ready:', err);
+      }
+
+      if (loadedStudents && loadedStudents.length > 0) {
+        setStudents(loadedStudents);
+        const initialMap = {};
+        loadedStudents.forEach((s) => {
+          if (s.status === 'Detained') {
+            initialMap[s.uid] = 'Detained';
+          } else {
+            initialMap[s.uid] = s.status === 'Active' ? 'Present' : 'Absent';
+          }
+        });
+        setAttendanceMap(initialMap);
+      } else {
+        setStudents([]);
+      }
+
+      if (loadedClasses && loadedClasses.length > 0) {
+        setClasses(loadedClasses);
+        setSelectedClass((prev) => prev || loadedClasses[0]);
+        setSessionType((prev) => prev || loadedClasses[0].type || 'Lecture');
+      }
+
+      if (loadedSessions && loadedSessions.length > 0) {
+        setSessionsList(loadedSessions);
+        if (!selectedHistorySession) {
+          viewSavedSession(loadedSessions[0]);
+        }
+      } else {
+        setSessionsList([]);
+      }
+
+      clearTimeout(wakeupTimer);
+      setIsSlowWakeup(false);
     } catch (err) {
-      console.warn('Sessions list endpoint not ready:', err);
+      console.error('General error loading faculty data:', err);
+      clearTimeout(wakeupTimer);
+      setIsSlowWakeup(false);
+      setError('Failed to establish database telemetry. SQLite3 service may be initializing.');
+    } finally {
+      await checkDateLock(sessionDate);
+      setLoading(false);
     }
-
-    if (loadedStudents && loadedStudents.length > 0) {
-      setStudents(loadedStudents);
-      const initialMap = {};
-      loadedStudents.forEach((s) => {
-        initialMap[s.uid] = s.status === 'Active' ? 'Present' : 'Absent';
-      });
-      setAttendanceMap(initialMap);
-    }
-
-    if (loadedClasses && loadedClasses.length > 0) {
-      setClasses(loadedClasses);
-      setSelectedClass((prev) => prev || loadedClasses[0]);
-      setSessionType((prev) => prev || loadedClasses[0].type || 'Lecture');
-    }
-
-    if (loadedSessions && loadedSessions.length > 0) {
-      setSessionsList(loadedSessions);
-      if (!selectedHistorySession) {
-        viewSavedSession(loadedSessions[0]);
-      }
-    }
-
-    await checkDateLock(sessionDate);
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -135,7 +166,11 @@ export const FacultyDashboard = ({ user }) => {
     }
     const newMap = {};
     students.forEach((s) => {
-      newMap[s.uid] = status;
+      if (s.status === 'Detained') {
+        newMap[s.uid] = 'Detained';
+      } else {
+        newMap[s.uid] = status;
+      }
     });
     setAttendanceMap(newMap);
   };
@@ -157,7 +192,7 @@ export const FacultyDashboard = ({ user }) => {
         student_uid: s.uid,
         student_name: s.name,
         enrolment_number: s.enrolment_number,
-        status: attendanceMap[s.uid] || 'Present'
+        status: s.status === 'Detained' ? 'Absent' : (attendanceMap[s.uid] || 'Present')
       }));
 
       const payload = {
@@ -210,6 +245,11 @@ export const FacultyDashboard = ({ user }) => {
     }
 
     const newStatus = rec.status === 'Present' ? 'Absent' : 'Present';
+    const targetStudent = students.find((s) => s.uid === rec.student_uid);
+    if (targetStudent && targetStudent.status === 'Detained' && newStatus === 'Present') {
+      notify(`Cannot mark ${rec.student_name} as Present. Student is currently DETAINED from academic sessions and examinations.`, 'error');
+      return;
+    }
     try {
       const res = await api.updateSingleAttendanceRecord({
         record_id: rec.id,
@@ -295,9 +335,10 @@ export const FacultyDashboard = ({ user }) => {
           </div>
 
           <div className="flex items-center gap-3">
+            <DatabaseWakeupNotice visible={isSlowWakeup} message="Connecting to database roster..." />
             <button
               onClick={loadData}
-              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
               title="Refresh Roster"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -306,30 +347,39 @@ export const FacultyDashboard = ({ user }) => {
         </div>
       </div>
 
+      {/* Global Error Banner if initial fetch failed */}
+      {error && students.length === 0 && !loading && (
+        <ErrorState
+          title="Roster Data Offline"
+          message={error}
+          onRetry={loadData}
+        />
+      )}
+
       {/* TOP NAVIGATION TABS: Take Attendance vs View Saved Attendance */}
       <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 w-fit">
         <button
           onClick={() => setActiveTab('take')}
-          className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+          className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'take'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
               : 'text-slate-400 hover:text-white'
           }`}
         >
           <CheckSquare className="w-4 h-4" />
-          <span>Take Roll Call ({totalStudents} Students)</span>
+          <span>Take Roll Call ({loading ? '...' : totalStudents} Students)</span>
         </button>
 
         <button
           onClick={() => setActiveTab('history')}
-          className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+          className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'history'
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
               : 'text-slate-400 hover:text-white'
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>View Saved Attendance Sheets ({sessionsList.length} Sessions)</span>
+          <span>View Saved Attendance Sheets ({loading ? '...' : sessionsList.length} Sessions)</span>
         </button>
       </div>
 
@@ -338,47 +388,58 @@ export const FacultyDashboard = ({ user }) => {
         <div className="space-y-6">
           {/* Live present counters */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="glass-panel p-5 rounded-2xl border border-slate-800">
-              <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
-                <span>Total Enrolled</span>
-                <Users className="w-4 h-4 text-indigo-400" />
-              </div>
-              <div className="text-3xl font-black text-white mt-3">{totalStudents}</div>
-              <div className="text-xs text-slate-400 mt-1">Computer Dept - Sem 6</div>
-            </div>
+            {loading ? (
+              <>
+                <SkeletonMetricCard />
+                <SkeletonMetricCard />
+                <SkeletonMetricCard />
+                <SkeletonMetricCard />
+              </>
+            ) : (
+              <>
+                <div className="glass-panel p-5 rounded-2xl border border-slate-800 fade-in-content">
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
+                    <span>Total Enrolled</span>
+                    <Users className="w-4 h-4 text-indigo-400" />
+                  </div>
+                  <div className="text-3xl font-black text-white mt-3">{totalStudents}</div>
+                  <div className="text-xs text-slate-400 mt-1">Computer Dept - Sem 6</div>
+                </div>
 
-            <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20 bg-emerald-950/10">
-              <div className="flex items-center justify-between text-xs font-semibold uppercase text-emerald-300">
-                <span>Present in {sessionType}</span>
-                <CheckCircle className="w-4 h-4 text-emerald-400" />
-              </div>
-              <div className="text-3xl font-black text-emerald-400 mt-3">{presentCount}</div>
-              <div className="text-xs text-emerald-400/80 mt-1">
-                {presentPercentage}% of batch attendance
-              </div>
-            </div>
+                <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20 bg-emerald-950/10 fade-in-content">
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase text-emerald-300">
+                    <span>Present in {sessionType}</span>
+                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div className="text-3xl font-black text-emerald-400 mt-3">{presentCount}</div>
+                  <div className="text-xs text-emerald-400/80 mt-1">
+                    {presentPercentage}% of batch attendance
+                  </div>
+                </div>
 
-            <div className="glass-panel p-5 rounded-2xl border border-rose-500/20 bg-rose-950/10">
-              <div className="flex items-center justify-between text-xs font-semibold uppercase text-rose-300">
-                <span>Absent in {sessionType}</span>
-                <XCircle className="w-4 h-4 text-rose-400" />
-              </div>
-              <div className="text-3xl font-black text-rose-400 mt-3">{absentCount}</div>
-              <div className="text-xs text-rose-400/80 mt-1">Marked absent for session</div>
-            </div>
+                <div className="glass-panel p-5 rounded-2xl border border-rose-500/20 bg-rose-950/10 fade-in-content">
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase text-rose-300">
+                    <span>Absent in {sessionType}</span>
+                    <XCircle className="w-4 h-4 text-rose-400" />
+                  </div>
+                  <div className="text-3xl font-black text-rose-400 mt-3">{absentCount}</div>
+                  <div className="text-xs text-rose-400/80 mt-1">Marked absent for session</div>
+                </div>
 
-            <div className="glass-panel p-5 rounded-2xl border border-slate-800">
-              <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
-                <span>Active Session</span>
-                <Layers className="w-4 h-4 text-blue-400" />
-              </div>
-              <div className="text-xl font-bold text-white mt-3 truncate">
-                {selectedClass ? selectedClass.subject_name : 'DBMS'}
-              </div>
-              <div className="text-xs text-indigo-300 mt-1 font-semibold">
-                {sessionType} Mode • {selectedClass ? selectedClass.room : 'LH-301'}
-              </div>
-            </div>
+                <div className="glass-panel p-5 rounded-2xl border border-slate-800 fade-in-content">
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
+                    <span>Active Session</span>
+                    <Layers className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <div className="text-xl font-bold text-white mt-3 truncate">
+                    {selectedClass ? selectedClass.subject_name : 'DBMS'}
+                  </div>
+                  <div className="text-xs text-indigo-300 mt-1 font-semibold">
+                    {sessionType} Mode • {selectedClass ? selectedClass.room : 'LH-301'}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Session configuration form */}
@@ -544,14 +605,36 @@ export const FacultyDashboard = ({ user }) => {
             </div>
 
             <div className="max-h-[500px] overflow-y-auto divide-y divide-slate-800/80">
-              {filteredRoster.map((student) => {
-                const isPresent = attendanceMap[student.uid] === 'Present';
+              {loading ? (
+                <>
+                  <SkeletonRosterItem />
+                  <SkeletonRosterItem />
+                  <SkeletonRosterItem />
+                  <SkeletonRosterItem />
+                  <SkeletonRosterItem />
+                  <SkeletonRosterItem />
+                </>
+              ) : filteredRoster.length === 0 ? (
+                <EmptyState
+                  icon={Users}
+                  title="No students found in this batch"
+                  description={
+                    searchRoster
+                      ? `No students match "${searchRoster}" under filter "${batchFilter}".`
+                      : `No enrolled students registered for ${batchFilter}.`
+                  }
+                  actionLabel={searchRoster ? "Clear Search" : undefined}
+                  onAction={searchRoster ? () => setSearchRoster('') : undefined}
+                />
+              ) : (
+                filteredRoster.map((student) => {
+                  const isPresent = attendanceMap[student.uid] === 'Present';
 
-                return (
-                  <div
-                    key={student.uid}
-                    className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-900/40 transition-colors"
-                  >
+                  return (
+                    <div
+                      key={student.uid}
+                      className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-900/40 transition-colors fade-in-content"
+                    >
                     <div className="flex items-center gap-3 min-w-0">
                       <img
                         src={cleanAvatarUrl(student.student_photo, student.name, null, false)}
@@ -570,34 +653,41 @@ export const FacultyDashboard = ({ user }) => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 self-end sm:self-center">
-                      <button
-                        onClick={() => setAttendanceMap((prev) => ({ ...prev, [student.uid]: 'Present' }))}
-                        className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                          isPresent
-                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/25 scale-105'
-                            : 'bg-slate-900 text-slate-400 hover:text-emerald-300 border border-slate-800'
-                        }`}
-                      >
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        <span>Present</span>
-                      </button>
+                    {student.status === 'Detained' ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold shadow-sm self-end sm:self-center">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Detained (1-Yr Exam Bar)</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 self-end sm:self-center">
+                        <button
+                          onClick={() => setAttendanceMap((prev) => ({ ...prev, [student.uid]: 'Present' }))}
+                          className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                            isPresent
+                              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/25 scale-105'
+                              : 'bg-slate-900 text-slate-400 hover:text-emerald-300 border border-slate-800'
+                          }`}
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span>Present</span>
+                        </button>
 
-                      <button
-                        onClick={() => setAttendanceMap((prev) => ({ ...prev, [student.uid]: 'Absent' }))}
-                        className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                          !isPresent
-                            ? 'bg-rose-600 text-white shadow-md shadow-rose-500/25 scale-105'
-                            : 'bg-slate-900 text-slate-400 hover:text-rose-300 border border-slate-800'
-                        }`}
-                      >
-                        <XCircle className="w-3.5 h-3.5" />
-                        <span>Absent</span>
-                      </button>
-                    </div>
+                        <button
+                          onClick={() => setAttendanceMap((prev) => ({ ...prev, [student.uid]: 'Absent' }))}
+                          className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                            !isPresent
+                              ? 'bg-rose-600 text-white shadow-md shadow-rose-500/25 scale-105'
+                              : 'bg-slate-900 text-slate-400 hover:text-rose-300 border border-slate-800'
+                          }`}
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Absent</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
-              })}
+              }))}
             </div>
 
             <div className="p-6 bg-slate-950/80 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -653,10 +743,28 @@ export const FacultyDashboard = ({ user }) => {
             </div>
 
             <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-              {sessionsList.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-xs">
-                  No past sessions found.
-                </div>
+              {loading ? (
+                <>
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 space-y-2.5">
+                      <div className="flex justify-between">
+                        <Skeleton className="h-3.5 w-20" />
+                        <Skeleton className="h-4 w-12 rounded" />
+                      </div>
+                      <Skeleton className="h-4 w-32" />
+                      <div className="flex justify-between pt-1">
+                        <Skeleton className="h-3 w-16" />
+                        <Skeleton className="h-3 w-16" />
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : sessionsList.length === 0 ? (
+                <EmptyState
+                  icon={FileText}
+                  title="No past sessions recorded"
+                  description="When you take roll call and submit attendance, saved sheets will be archived here."
+                />
               ) : (
                 sessionsList.map((ses, idx) => {
                   const isSelected = selectedHistorySession &&
