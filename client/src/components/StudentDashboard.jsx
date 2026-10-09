@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   GraduationCap, Calendar, CheckCircle2, XCircle, Award,
   Clock, BookOpen, AlertCircle, Sparkles, Filter, Search, RefreshCw, BarChart2,
-  ChevronDown, ShieldCheck, Info, Layers, TrendingUp, ArrowRight, Eye, X, Users
+  ChevronDown, ShieldCheck, Info, Layers, TrendingUp, ArrowRight, Eye, X, Users,
+  Mail, KeyRound
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
 import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
+import { AccountSecurityModal } from './AccountSecurityModal';
 import {
   Skeleton,
   SkeletonMetricCard,
@@ -18,7 +20,7 @@ import {
   EmptyState
 } from './Skeleton';
 
-export const StudentDashboard = ({ user }) => {
+export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
   const [studentInfo, setStudentInfo] = useState(null);
   const [history, setHistory] = useState([]);
   const [subjectAttendance, setSubjectAttendance] = useState([]);
@@ -37,6 +39,7 @@ export const StudentDashboard = ({ user }) => {
   const [modalFilterStatus, setModalFilterStatus] = useState('All'); // 'All', 'Present', 'Absent'
   const [modalBatchFilter, setModalBatchFilter] = useState('All'); // 'All', 'Batch A', 'Batch B'
   const [showFaceModal, setShowFaceModal] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
 
   const handleOpenSessionModal = async (sessionItem) => {
     setSelectedSessionModal(sessionItem);
@@ -457,6 +460,18 @@ export const StudentDashboard = ({ user }) => {
                 </select>
               </div>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenSecurity) onOpenSecurity();
+                else setShowSecurityModal(true);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs sm:text-sm flex items-center gap-2 border border-emerald-400/30 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              title="Change Email (Normal or .edu) & Password with OTP"
+            >
+              <Mail className="w-4 h-4" />
+              <span>Change Me</span>
+            </button>
             <button
               type="button"
               onClick={() => setShowFaceModal(true)}
@@ -1436,6 +1451,17 @@ export const StudentDashboard = ({ user }) => {
           studentName={s.name}
         />
       )}
+
+      {/* Account Security & Verified Email / Password Modal */}
+      <AccountSecurityModal
+        isOpen={showSecurityModal}
+        onClose={() => setShowSecurityModal(false)}
+        user={user}
+        onUserUpdated={(updatedUser, token) => {
+          if (onUserUpdated) onUserUpdated(updatedUser, token);
+          loadStudentData();
+        }}
+      />
     </div>
   );
 };

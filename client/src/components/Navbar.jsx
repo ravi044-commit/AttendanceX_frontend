@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, LogOut, Sparkles, UserCheck, Calendar, Shield, BookOpen, GraduationCap, Crown } from 'lucide-react';
+import { Users, LogOut, Sparkles, UserCheck, Calendar, Shield, BookOpen, GraduationCap, Crown, ShieldCheck } from 'lucide-react';
 import { cleanAvatarUrl } from '../utils/avatarUtils';
 
 export const Navbar = ({
@@ -11,7 +11,8 @@ export const Navbar = ({
   activeRoleView,
   setActiveRoleView,
   onToggleTimetable,
-  showTimetable
+  showTimetable,
+  onOpenSecurity
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-2xl transition-all">
@@ -150,23 +151,41 @@ export const Navbar = ({
 
               {/* User Profile & Sign Out */}
               <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-slate-800">
-                <img
-                  src={cleanAvatarUrl(user.avatar, user.name, null, user.role === 'faculty' || user.role === 'hod')}
-                  alt={user.name}
-                  className="w-9 h-9 rounded-full ring-2 ring-indigo-500/40 object-cover bg-slate-800"
-                />
-                <div className="hidden sm:block text-right">
-                  <div className="text-xs sm:text-sm font-bold text-slate-100 leading-tight">
-                    {user.name}
+                <button
+                  type="button"
+                  onClick={onOpenSecurity}
+                  className="flex items-center gap-2.5 text-left p-1 rounded-xl hover:bg-slate-900 transition-colors group cursor-pointer"
+                  title="Account Security & Verified Email Settings"
+                >
+                  <img
+                    src={cleanAvatarUrl(user.avatar, user.name, null, user.role === 'faculty' || user.role === 'hod')}
+                    alt={user.name}
+                    className="w-9 h-9 rounded-full ring-2 ring-indigo-500/40 object-cover bg-slate-800 group-hover:ring-indigo-400 transition-all"
+                  />
+                  <div className="hidden sm:block text-right">
+                    <div className="text-xs sm:text-sm font-bold text-slate-100 leading-tight group-hover:text-indigo-300 transition-colors">
+                      {user.name}
+                    </div>
+                    <div className="text-[11px] text-indigo-400 font-medium flex items-center justify-end gap-1">
+                      <span>{user.department || 'Computer Department'}</span>
+                      <ShieldCheck className="w-3 h-3 text-emerald-400 inline" />
+                    </div>
                   </div>
-                  <div className="text-[11px] text-indigo-400 font-medium">
-                    {user.department || 'Computer Department'}
-                  </div>
-                </div>
+                </button>
+
+                {onOpenSecurity && (
+                  <button
+                    onClick={onOpenSecurity}
+                    className="p-2 text-slate-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-xl border border-transparent hover:border-indigo-500/20 transition-all cursor-pointer"
+                    title="Account Security & Verified Email Settings"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  </button>
+                )}
 
                 <button
                   onClick={onLogout}
-                  className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl border border-transparent hover:border-rose-500/20 transition-all"
+                  className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
                   title="Sign Out"
                 >
                   <LogOut className="w-4 h-4" />

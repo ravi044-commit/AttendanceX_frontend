@@ -11,6 +11,7 @@ import { AnimatedStats } from './components/AnimatedStats';
 import { FeaturesSection } from './components/FeaturesSection';
 import { WorkflowSection } from './components/WorkflowSection';
 import { ModernFooter } from './components/ModernFooter';
+import { AccountSecurityModal } from './components/AccountSecurityModal';
 import {
   Shield, GraduationCap, BookOpen, Crown, Sparkles,
   Database, ArrowRight, CheckCircle2,
@@ -40,10 +41,24 @@ export default function App() {
   });
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [securityModalOpen, setSecurityModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'signup'
   const [authRole, setAuthRole] = useState('student'); // 'admin', 'student', 'faculty', 'hod'
   const [activeRoleView, setActiveRoleView] = useState('admin'); // For Admin view switching
   const [showTimetable, setShowTimetable] = useState(false);
+
+  const handleUserUpdated = (updatedUser, newToken) => {
+    setUser(updatedUser);
+    try {
+      localStorage.setItem('attendancex_user', JSON.stringify(updatedUser));
+      if (newToken) {
+        setToken(newToken);
+        localStorage.setItem('attendancex_token', newToken);
+      }
+    } catch (err) {
+      console.error('Error updating user storage:', err);
+    }
+  };
 
   useEffect(() => {
     if (user && user.role) {
@@ -173,6 +188,7 @@ export default function App() {
         setActiveRoleView={setActiveRoleView}
         onToggleTimetable={() => setShowTimetable(t => !t)}
         showTimetable={showTimetable}
+        onOpenSecurity={() => setSecurityModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -422,7 +438,13 @@ export default function App() {
                 {/* Render selected dashboard */}
                 {activeRoleView === 'admin' && <AdminDashboard />}
                 {activeRoleView === 'faculty' && <FacultyDashboard user={user} />}
-                {activeRoleView === 'student' && <StudentDashboard user={user} />}
+                {activeRoleView === 'student' && (
+                  <StudentDashboard
+                    user={user}
+                    onUserUpdated={handleUserUpdated}
+                    onOpenSecurity={() => setSecurityModalOpen(true)}
+                  />
+                )}
                 {activeRoleView === 'hod' && <HodDashboard user={user} />}
               </>
             )}
@@ -443,6 +465,14 @@ export default function App() {
         initialMode={authMode}
         initialRole={authRole}
         onSuccess={handleLoginSuccess}
+      />
+
+      {/* Account Security & Email Verification Modal */}
+      <AccountSecurityModal
+        isOpen={securityModalOpen}
+        onClose={() => setSecurityModalOpen(false)}
+        user={user}
+        onUserUpdated={handleUserUpdated}
       />
     </div>
   );

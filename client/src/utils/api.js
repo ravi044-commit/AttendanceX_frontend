@@ -71,6 +71,87 @@ export const api = {
     return data;
   },
 
+  // Feature 6: Email OTP Verification & Account Security
+  sendOtp: async (email, purpose, currentEmailOrUser = null) => {
+    let currentEmail = null;
+    let uid = null;
+    if (typeof currentEmailOrUser === 'string') {
+      currentEmail = currentEmailOrUser;
+    } else if (currentEmailOrUser && typeof currentEmailOrUser === 'object') {
+      currentEmail = currentEmailOrUser.email;
+      uid = currentEmailOrUser.uid;
+    }
+    const res = await fetchWithTimeout(`${API_BASE}/auth/otp/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ email, purpose, currentEmail, uid }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to send verification code');
+    return data;
+  },
+
+  verifyOtp: async (email, otp, purpose) => {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/otp/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ email, otp, purpose }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Invalid or expired verification code');
+    return data;
+  },
+
+  resetPassword: async (resetAuthorization, newPassword) => {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resetAuthorization, newPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to reset password');
+    return data;
+  },
+
+  verifyEmailChange: async (newEmail, otp, currentEmailOrUser = null) => {
+    let currentEmail = null;
+    let uid = null;
+    if (typeof currentEmailOrUser === 'string') {
+      currentEmail = currentEmailOrUser;
+    } else if (currentEmailOrUser && typeof currentEmailOrUser === 'object') {
+      currentEmail = currentEmailOrUser.email;
+      uid = currentEmailOrUser.uid;
+    }
+    const res = await fetchWithTimeout(`${API_BASE}/auth/otp/verify-email-change`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ newEmail, otp, currentEmail, uid }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to verify and update email');
+    return data;
+  },
+
+  verifyAccountSetup: async (email, otp, password) => {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/otp/verify-account-setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to complete account setup');
+    return data;
+  },
+
+  getMe: async () => {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/me`, {
+      headers: { ...getAuthHeaders() }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch current user profile');
+    return data;
+  },
+
   // Students
   getStudents: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
