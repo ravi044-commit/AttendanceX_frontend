@@ -153,16 +153,25 @@ export const rawStudentList = [
   { "uid": 99, "enrollment_number": "236250307037", "name": "GOSWAMI SAHILPURI AJAYPURI", "status": "Present" }
 ];
 
+const getNumericSuffix = (value) => {
+  // Scan once from the end; an unanchored digit regex can backtrack quadratically.
+  let start = value.length;
+  while (start > 0) {
+    const code = value.charCodeAt(start - 1);
+    if (code < 48 || code > 57) break;
+    start--;
+  }
+  return start < value.length ? parseInt(value.slice(start), 10) : null;
+};
+
 export const getStudentBatch = (uid, enrolment) => {
   let num = null;
   if (typeof uid === 'number') num = uid;
   else if (typeof uid === 'string') {
-    const match = uid.match(/(\d+)$/);
-    if (match) num = parseInt(match[1], 10);
+    num = getNumericSuffix(uid);
   }
   if (!num && enrolment) {
-    const match = enrolment.match(/(\d+)$/);
-    if (match) num = parseInt(match[1], 10);
+    num = getNumericSuffix(enrolment);
   }
   if (num && num >= 1 && num <= 63) return 'Batch A';
   return 'Batch B';
