@@ -18,33 +18,69 @@ const getAuthHeaders = () => {
   }
 };
 
-const fetchWithTimeout = async (url, options = {}, timeoutMs = 12000) => {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      ...options,
-      signal: options.signal || controller.signal,
-    });
-    clearTimeout(timer);
-    if (res.status === 401 && typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem('attendancex_user');
-        localStorage.removeItem('attendancex_token');
-        localStorage.removeItem('attendx_user');
-        localStorage.removeItem('attendx_token');
-        sessionStorage.clear();
-        window.dispatchEvent(new CustomEvent('attendancex_unauthorized'));
-      } catch {}
+// Cold start timeout configuration: Free-tier hosts (Render, Railway, Fly) take 30-50s to wake up.
+// Default to 60s in production or allow overriding via VITE_API_TIMEOUT_MS.
+const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || (import.meta.env.PROD ? 60000 : 35000);
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const fetchWithTimeout = async (url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS, maxRetries = 2) => {
+  let attempt = 0;
+  let lastError = null;
+
+  while (attempt <= maxRetries) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        ...options,
+        signal: options.signal || controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (res.status === 401 && typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('attendancex_user');
+          localStorage.removeItem('attendancex_token');
+          localStorage.removeItem('attendx_user');
+          localStorage.removeItem('attendx_token');
+          sessionStorage.clear();
+          window.dispatchEvent(new CustomEvent('attendancex_unauthorized'));
+        } catch {}
+      }
+
+      // If cloud hosting proxy returns 502/503/504 while waking up, retry with backoff
+      if ([502, 503, 504].includes(res.status) && attempt < maxRetries) {
+        attempt++;
+        await sleep(2000 * attempt);
+        continue;
+      }
+
+      return res;
+    } catch (err) {
+      clearTimeout(timer);
+      lastError = err;
+
+      // If aborted due to timeout or failed to fetch (server cold start / waking up)
+      if (
+        (err.name === 'AbortError' || err.message?.includes('fetch') || err.message?.includes('network')) &&
+        attempt < maxRetries
+      ) {
+        attempt++;
+        await sleep(1500 * attempt);
+        continue;
+      }
+
+      break;
     }
-    return res;
-  } catch (err) {
-    clearTimeout(timer);
-    if (err.name === 'AbortError') {
-      throw new Error('Database/Server request timed out. SQLite service may be waking up.');
-    }
-    throw err;
   }
+
+  if (lastError && lastError.name === 'AbortError') {
+    throw new Error('Database/Server request timed out. The backend service may still be waking up. Please retry in a few moments.');
+  }
+
+  throw lastError;
 };
 
 const parseResponse = async (res, defaultErrorMessage = 'Request failed') => {
@@ -54,6 +90,36 @@ const parseResponse = async (res, defaultErrorMessage = 'Request failed') => {
   } catch (err) {
     if (!res.ok) throw new Error(defaultErrorMessage);
     return {};
+  }
+
+  // Detect HTML returned instead of JSON (common when VITE_API_URL is missing or routing to Vercel/Netlify index.html)
+  const contentType = res.headers.get('content-type') || '';
+  const isHtml =
+    contentType.includes('text/html') ||
+    text.trim().startsWith('<!DOCTYPE') ||
+    text.trim().startsWith('<html');
+
+  if (isHtml) {
+    const isProduction =
+      typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1';
+
+    if (isProduction && (API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1'))) {
+      throw new Error(
+        'VITE_API_URL is configured to localhost in production. Please set VITE_API_URL in your hosting provider (Vercel/Netlify) to your live backend URL (e.g., https://your-server.onrender.com).'
+      );
+    }
+
+    if (API_BASE === '/api' || API_BASE.endsWith('/api')) {
+      throw new Error(
+        'Backend server endpoint returned HTML instead of JSON. Ensure your live backend URL is configured as VITE_API_URL in your hosting provider environment variables.'
+      );
+    }
+
+    throw new Error(
+      'Server returned HTML instead of expected JSON data. The service may still be booting or restarting.'
+    );
   }
 
   let data = null;
@@ -77,10 +143,20 @@ const parseResponse = async (res, defaultErrorMessage = 'Request failed') => {
 };
 
 export const api = {
+  // Silent background wake-up ping for cold-starting cloud backends
+  warmupBackend: async () => {
+    try {
+      await fetch(`${API_BASE}/health`, { method: 'GET', mode: 'cors' });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
   // System Health
   checkHealth: async () => {
     try {
-      const res = await fetchWithTimeout(`${API_BASE}/health`);
+      const res = await fetchWithTimeout(`${API_BASE}/health`, {}, 15000, 1);
       return await parseResponse(res, 'Health check failed');
     } catch {
       return { status: 'offline' };
@@ -407,11 +483,7 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ uid, image: imageBase64 }),
-    });
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Backend server not reachable at ${API_BASE} (received HTML). Make sure your backend server is running on http://localhost:5000.`);
-    }
+    }, 60000, 1);
     return parseResponse(res, 'Failed to enroll face photo');
   },
 

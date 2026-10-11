@@ -16,6 +16,7 @@ const HodDashboard = lazy(() => import('./components/HodDashboard').then(m => ({
 const TimetableView = lazy(() => import('./components/TimetableView').then(m => ({ default: m.TimetableView })));
 const AuthModal = lazy(() => import('./components/AuthModal').then(m => ({ default: m.AuthModal })));
 const AccountSecurityModal = lazy(() => import('./components/AccountSecurityModal').then(m => ({ default: m.AccountSecurityModal })));
+import { api } from './utils/api';
 
 const DashboardLoadingFallback = () => (
   <div className="space-y-6 animate-pulse py-4" role="status" aria-label="Loading dashboard view">
@@ -58,7 +59,7 @@ export default function App() {
   const [activeRoleView, setActiveRoleView] = useState('admin'); // For Admin view switching
   const [showTimetable, setShowTimetable] = useState(false);
 
-  // Permanently enforce sleek dark theme and clear any obsolete light theme keys
+  // Permanently enforce sleek dark theme and warm up backend if it is sleeping on a cloud host
   useEffect(() => {
     try {
       document.documentElement.setAttribute('data-theme', 'dark');
@@ -69,6 +70,9 @@ export default function App() {
     } catch (e) {
       // ignore
     }
+
+    // Silent background wake-up ping for sleeping SQLite/cloud server
+    api.warmupBackend();
   }, []);
 
   const handleUserUpdated = (updatedUser, newToken) => {
