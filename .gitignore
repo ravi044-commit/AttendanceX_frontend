@@ -1,1 +1,30 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
 
+# Environment files
+.env
+.env.local
+server/.env
+client/.env
+
+# Build outputs
+dist/
+client/dist/
+
+# SQLite databases & logs
+*.db
+*.db-shm
+*.db-wal
+server/*.db
+npm-debug.log*
+yarn-debug.log*
+
+# Backups & Temp
+server/server_backup/
+.vscode/
+
+# Face Database (runtime generated)
+face_db/
+server/face_db/
