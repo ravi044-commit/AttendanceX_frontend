@@ -31,15 +31,15 @@ export const Navbar = ({
             
             <div className="text-left">
               <div className="flex items-center gap-2">
-                <span className="text-xl sm:text-2xl font-black tracking-tight animated-gradient-brand glow-text">
+                <span className="text-xl sm:text-2xl font-black tracking-tight animated-gradient-brand bg-clip-text text-transparent glow-text">
                   AttendanceX
                 </span>
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                  v2.0
+                <span className="hidden xs:inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                  v2.0 SaaS
                 </span>
               </div>
               <p className="text-[10px] tracking-wider uppercase font-semibold text-slate-400 hidden sm:block">
-                Smart Semester System
+                Smart Attendance System
               </p>
             </div>
           </a>
@@ -51,16 +51,10 @@ export const Navbar = ({
             <a href="#portals" className="hover:text-indigo-300 transition-colors">
               Portals
             </a>
-            <a href="#features" className="hover:text-indigo-300 transition-colors">
-              Features
-            </a>
-            <a href="#workflow" className="hover:text-indigo-300 transition-colors">
-              How It Works
-            </a>
             {onToggleTimetable && (
               <button
                 onClick={onToggleTimetable}
-                className="hover:text-indigo-300 transition-colors flex items-center gap-1.5"
+                className="hover:text-indigo-300 transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Calendar className="w-3.5 h-3.5 text-indigo-400" />
                 <span>{showTimetable ? 'Hide Timetable' : 'Timetable'}</span>
@@ -70,7 +64,7 @@ export const Navbar = ({
         )}
 
         {/* RIGHT ACTION CONTROLS */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {!user ? (
             <div className="flex items-center gap-2 sm:gap-3">
               {onToggleTimetable && (
@@ -88,11 +82,11 @@ export const Navbar = ({
                   setAuthMode('login');
                   onOpenAuth('login');
                 }}
-                className="btn-primary-glow px-4 sm:px-5 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 flex items-center gap-2 border bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-lg shadow-indigo-500/25 border-indigo-400/30"
-                title="Log into existing account"
+                className="btn-primary-glow px-4 sm:px-5 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 flex items-center gap-2 border bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-lg shadow-indigo-500/25 border-indigo-400/30 cursor-pointer"
+                title="Sign into existing account"
               >
                 <UserCheck className="w-4 h-4 text-indigo-200" />
-                <span>Log In</span>
+                <span>Sign In</span>
               </button>
             </div>
           ) : (
@@ -138,6 +132,7 @@ export const Navbar = ({
                     <select
                       value={activeRoleView}
                       onChange={(e) => setActiveRoleView(e.target.value)}
+                      aria-label="Select role view"
                       className="bg-slate-900 border border-slate-800 text-xs font-semibold text-indigo-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500"
                     >
                       <option value="admin">Admin View</option>
@@ -156,6 +151,7 @@ export const Navbar = ({
                   onClick={onOpenSecurity}
                   className="flex items-center gap-2.5 text-left p-1 rounded-xl hover:bg-slate-900 transition-colors group cursor-pointer"
                   title="Account Security & Verified Email Settings"
+                  aria-label="Open account security settings"
                 >
                   <img
                     src={cleanAvatarUrl(user.avatar, user.name, null, user.role === 'faculty' || user.role === 'hod')}
@@ -178,6 +174,7 @@ export const Navbar = ({
                     onClick={onOpenSecurity}
                     className="p-2 text-slate-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-xl border border-transparent hover:border-indigo-500/20 transition-all cursor-pointer"
                     title="Account Security & Verified Email Settings"
+                    aria-label="Account security settings"
                   >
                     <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   </button>
@@ -187,6 +184,7 @@ export const Navbar = ({
                   onClick={onLogout}
                   className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
                   title="Sign Out"
+                  aria-label="Sign out of account"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>

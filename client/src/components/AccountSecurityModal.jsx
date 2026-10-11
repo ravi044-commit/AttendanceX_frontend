@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Shield, Mail, Lock, CheckCircle2, AlertCircle, ArrowRight,
-  RefreshCw, Clock, X, KeyRound, User, ArrowLeft, ShieldCheck
+  RefreshCw, Clock, X, KeyRound, User, ArrowLeft, ShieldCheck,
+  Eye, EyeOff
 } from 'lucide-react';
 import { api } from '../utils/api';
 
@@ -29,6 +30,17 @@ export const AccountSecurityModal = ({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // Google Account Linking State
+  const [googleStatus, setGoogleStatus] = useState({
+    linked: Boolean(user?.google_id),
+    googleEmail: user?.google_email || null
+  });
+  const [unlinkPassword, setUnlinkPassword] = useState('');
+  const [showUnlinkPassword, setShowUnlinkPassword] = useState(false);
+  const [connectPassword, setConnectPassword] = useState('');
+  const [showConnectPassword, setShowConnectPassword] = useState(false);
+  const [pendingGoogleLink, setPendingGoogleLink] = useState(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -45,10 +57,19 @@ export const AccountSecurityModal = ({
       setResetAuthToken('');
       setNewPassword('');
       setConfirmPassword('');
+      setUnlinkPassword('');
+      setConnectPassword('');
+      setPendingGoogleLink(null);
       setError('');
       setSuccessMsg('');
+      if (user) {
+        setGoogleStatus({
+          linked: Boolean(user.google_id),
+          googleEmail: user.google_email || null
+        });
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, user]);
 
   // Timers for Email Change
   useEffect(() => {
@@ -262,6 +283,125 @@ export const AccountSecurityModal = ({
     }
   };
 
+  // Google Account Linking Handlers
+  const handleUnlinkGoogle = async (e) => {
+    e.preventDefault();
+    if (!unlinkPassword) {
+      setError('Please enter your AttendanceX password to unlink Google account.');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      await api.unlinkGoogleAccount(unlinkPassword);
+      setGoogleStatus({ linked: false, googleEmail: null });
+      setUnlinkPassword('');
+      setSuccessMsg('Google account successfully unlinked from your profile.');
+      if (onUserUpdated) {
+        onUserUpdated({ ...user, google_id: null, google_email: null });
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to unlink Google account.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLinkCurrentAccountGoogle = async (response) => {
+    if (!response || !response.credential) return;
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api.googleLogin(response.credential);
+      if (res.status === 'unlinked') {
+        setPendingGoogleLink(res);
+        setConnectPassword('');
+        setSuccessMsg(`Google identity ${res.googleEmail} verified. Enter your password to complete linking.`);
+      } else if (res.user) {
+        setSuccessMsg('Google account is linked.');
+        setGoogleStatus({ linked: true, googleEmail: res.user.google_email || res.user.email });
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to authenticate with Google.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmLink = async (e) => {
+    e.preventDefault();
+    if (!connectPassword || !pendingGoogleLink?.linkToken) {
+      setError('Please enter your AttendanceX password.');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api.linkGoogleAccount({
+        linkToken: pendingGoogleLink.linkToken,
+        identifier: user.email || user.uid,
+        password: connectPassword
+      });
+      setGoogleStatus({ linked: true, googleEmail: res.user?.google_email || pendingGoogleLink.googleEmail });
+      setPendingGoogleLink(null);
+      setConnectPassword('');
+      setSuccessMsg('Google account linked successfully!');
+      if (onUserUpdated && res.user) {
+        onUserUpdated(res.user);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to link Google account.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'google' || googleStatus.linked) return;
+
+    let timer = null;
+    const renderBtn = () => {
+      if (window.google?.accounts?.id) {
+        try {
+          window.google.accounts.id.initialize({
+            client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '631464953143-s5tkj9oamekrfulm8jqc8l2n5q03co8r.apps.googleusercontent.com',
+            callback: handleLinkCurrentAccountGoogle,
+            auto_select: false,
+          });
+          const container = document.getElementById('googleSecurityBtnContainer');
+          if (container) {
+            container.innerHTML = '';
+            window.google.accounts.id.renderButton(container, {
+              type: 'standard',
+              theme: 'filled_black',
+              size: 'large',
+              text: 'continue_with',
+              shape: 'pill',
+              width: 300,
+            });
+          }
+        } catch (e) {
+          console.warn('GIS error in security modal:', e);
+        }
+      }
+    };
+
+    if (window.google?.accounts?.id) {
+      renderBtn();
+    } else {
+      timer = setInterval(() => {
+        if (window.google?.accounts?.id) {
+          renderBtn();
+          clearInterval(timer);
+        }
+      }, 300);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isOpen, activeTab, googleStatus.linked]);
+
   if (!isOpen) return null;
 
   return (
@@ -338,6 +478,22 @@ export const AccountSecurityModal = ({
           >
             <KeyRound className="w-4 h-4" />
             <span>Change Password (with OTP)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('google');
+              setError('');
+              setSuccessMsg('');
+            }}
+            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'google'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Google Account</span>
           </button>
         </div>
 
@@ -678,6 +834,156 @@ export const AccountSecurityModal = ({
                 >
                   Close Settings
                 </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: GOOGLE ACCOUNT INTEGRATION */}
+        {activeTab === 'google' && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center">
+                    <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-100">Google Single Sign-On</h4>
+                    <p className="text-xs text-slate-400">
+                      {googleStatus.linked ? 'Your Google account is securely connected.' : 'Link your Google account for 1-click Sign-In.'}
+                    </p>
+                  </div>
+                </div>
+
+                {googleStatus.linked ? (
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Linked</span>
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-xs font-semibold">
+                    Not Linked
+                  </span>
+                )}
+              </div>
+
+              {googleStatus.linked && (
+                <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Connected Google Email:</span>
+                  <span className="font-mono text-indigo-300 font-semibold">{googleStatus.googleEmail || user?.google_email || 'Linked Google Account'}</span>
+                </div>
+              )}
+            </div>
+
+            {/* UNLINK FORM */}
+            {googleStatus.linked ? (
+              <form onSubmit={handleUnlinkGoogle} className="p-4 rounded-xl bg-rose-500/5 border border-rose-500/20 space-y-3">
+                <div className="text-xs text-slate-300">
+                  <div className="font-semibold text-rose-300 mb-1 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-rose-400" />
+                    <span>Disconnect Google Account</span>
+                  </div>
+                  <p className="text-slate-400">
+                    To unlink your Google account, enter your AttendanceX password. You will continue to log in using your institutional email/enrollment and password.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Confirm Password</label>
+                  <div className="relative">
+                    <input
+                      type={showUnlinkPassword ? 'text' : 'password'}
+                      required
+                      value={unlinkPassword}
+                      onChange={(e) => setUnlinkPassword(e.target.value)}
+                      placeholder="Enter your AttendanceX password"
+                      className="w-full px-3 pr-10 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-100 text-xs focus:outline-none focus:border-rose-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUnlinkPassword(!showUnlinkPassword)}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-200 p-1"
+                    >
+                      {showUnlinkPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || !unlinkPassword}
+                  className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-500/20 disabled:opacity-50 cursor-pointer"
+                >
+                  {loading ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    <span>Disconnect Google Account</span>
+                  )}
+                </button>
+              </form>
+            ) : pendingGoogleLink ? (
+              /* CONFIRM LINK FORM WHEN PENDING */
+              <form onSubmit={handleConfirmLink} className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 space-y-3">
+                <div className="text-xs text-indigo-300">
+                  <div className="font-semibold text-white mb-1">Confirm Account Binding</div>
+                  <p>
+                    Connecting Google Identity <span className="font-mono text-indigo-200 font-bold">{pendingGoogleLink.googleEmail}</span> to your current AttendanceX profile. Enter your password to finalize.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">AttendanceX Password</label>
+                  <div className="relative">
+                    <input
+                      type={showConnectPassword ? 'text' : 'password'}
+                      required
+                      value={connectPassword}
+                      onChange={(e) => setConnectPassword(e.target.value)}
+                      placeholder="Enter your AttendanceX password"
+                      className="w-full px-3 pr-10 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-100 text-xs focus:outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConnectPassword(!showConnectPassword)}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-200 p-1"
+                    >
+                      {showConnectPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPendingGoogleLink(null)}
+                    className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading || !connectPassword}
+                    className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-lg shadow-indigo-500/25 disabled:opacity-50 cursor-pointer"
+                  >
+                    {loading ? 'Linking...' : 'Confirm Link'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              /* CONNECT VIA GOOGLE BUTTON */
+              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-center space-y-3">
+                <p className="text-xs text-slate-400">
+                  Select your Google account to connect it with your AttendanceX account.
+                </p>
+                <div className="flex justify-center w-full min-h-[44px]">
+                  <div id="googleSecurityBtnContainer"></div>
+                </div>
               </div>
             )}
           </div>

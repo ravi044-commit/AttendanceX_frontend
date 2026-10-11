@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserPlus, Trash2, Filter, Search, Shield,
   GraduationCap, BookOpen, Crown, Building2, CheckCircle2,
@@ -7,6 +7,8 @@ import {
 import { api } from '../utils/api';
 import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
+import { useInfiniteList } from '../hooks/useInfiniteList';
+import { InfiniteTable } from './InfiniteTable';
 import {
   SkeletonMetricCard,
   SkeletonTableRow,
@@ -27,6 +29,21 @@ export const AdminDashboard = () => {
   const [selectedRole, setSelectedRole] = useState('All');
   const [selectedDept, setSelectedDept] = useState('Computer Department');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const adminUsersQuery = useInfiniteList(
+    useCallback(
+      (params) =>
+        api.getUsers({
+          department: selectedDept !== 'All' ? selectedDept : '',
+          role: selectedRole !== 'All' ? selectedRole : '',
+          search: searchQuery,
+          ...params,
+        }),
+      [selectedDept, selectedRole, searchQuery]
+    ),
+    { department: selectedDept, role: selectedRole, search: searchQuery },
+    { limit: 20 }
+  );
   
   // Modals & form state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -58,12 +75,14 @@ export const AdminDashboard = () => {
 
     try {
       const [usersData, studentsData, summaryData] = await Promise.all([
-        api.getUsers({ department: selectedDept !== 'All' ? selectedDept : '' }),
-        api.getStudents({ department: selectedDept !== 'All' ? selectedDept : '' }),
+        api.getUsers({ department: selectedDept !== 'All' ? selectedDept : '', all: 'true' }),
+        api.getStudents({ department: selectedDept !== 'All' ? selectedDept : '', all: 'true' }),
         api.getAttendanceSummary(selectedDept !== 'All' ? selectedDept : 'Computer Department')
       ]);
-      setUsers(usersData || []);
-      setStudents(studentsData || []);
+      const rawUsers = Array.isArray(usersData) ? usersData : (usersData?.items || []);
+      const rawStudents = Array.isArray(studentsData) ? studentsData : (studentsData?.items || []);
+      setUsers(rawUsers);
+      setStudents(rawStudents);
       setSummary(summaryData || null);
       clearTimeout(wakeupTimer);
       setIsSlowWakeup(false);
@@ -172,21 +191,188 @@ export const AdminDashboard = () => {
     }
   };
 
-  // Combine & filter records
-  const filteredUsers = users.filter((u) => {
-    const matchesRole = selectedRole === 'All' || u.role.toLowerCase() === selectedRole.toLowerCase();
+  // Combine & filter records safely
+  const userList = Array.isArray(users) ? users : (users?.items || []);
+  const studentList = Array.isArray(students) ? students : (students?.items || []);
+
+  const filteredUsers = userList.filter((u) => {
+    const matchesRole = selectedRole === 'All' || (u.role && u.role.toLowerCase() === selectedRole.toLowerCase());
     const matchesSearch =
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.uid.toLowerCase().includes(searchQuery.toLowerCase());
+      (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.uid || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesRole && matchesSearch;
   });
 
   // Map student percentage stats to user records
   const studentMap = {};
-  students.forEach((s) => {
-    studentMap[s.uid] = s;
+  studentList.forEach((s) => {
+    if (s && s.uid) studentMap[s.uid] = s;
   });
+
+  const adminColumns = [
+    {
+      key: 'user',
+      label: 'User / Student',
+      headerClassName: 'min-w-[270px]',
+      render: (u) => (
+        <div className="flex items-center gap-2.5">
+          <img
+            src={cleanAvatarUrl(u.avatar, u.name, null, u.role === 'faculty' || u.role === 'hod')}
+            alt={u.name}
+            className="w-8 h-8 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700/80 shrink-0"
+          />
+          <div className="min-w-0">
+            <div className="font-semibold text-white text-xs whitespace-nowrap leading-tight">{u.name}</div>
+            <div className="text-[11px] text-slate-400 font-mono leading-tight mt-0.5 whitespace-nowrap">{u.email}</div>
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'uid_enrolment',
+      label: 'UID & Enrolment',
+      headerClassName: 'min-w-[140px] whitespace-nowrap',
+      render: (u) => {
+        const studentInfo = studentMap[u.uid];
+        const enrolment = studentInfo ? studentInfo.enrolment_number : '-';
+        return (
+          <div className="leading-tight">
+            <div className="font-mono text-xs text-indigo-300 font-semibold">{u.uid}</div>
+            {enrolment !== '-' && (
+              <div className="text-[11px] text-slate-400 font-mono mt-0.5">EN: {enrolment}</div>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      key: 'role_dept',
+      label: 'Role & Dept',
+      headerClassName: 'min-w-[150px] whitespace-nowrap',
+      render: (u) => (
+        <div className="flex flex-col gap-1 items-start leading-tight">
+          <span
+            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+              u.role === 'admin'
+                ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
+                : u.role === 'hod'
+                ? 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
+                : u.role === 'faculty'
+                ? 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
+                : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
+            }`}
+          >
+            {u.role}
+          </span>
+          <span className="text-[11px] text-slate-400">{u.department}</span>
+        </div>
+      )
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      headerClassName: 'min-w-[120px] whitespace-nowrap',
+      render: (u) => {
+        const studentInfo = studentMap[u.uid];
+        return studentInfo?.status === 'Detained' ? (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+            Detained (1-Yr Bar)
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            {studentInfo ? studentInfo.status : 'Active'}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'attendance_pct',
+      label: 'Overall Attendance %',
+      headerClassName: 'min-w-[150px] whitespace-nowrap',
+      render: (u) => {
+        const studentInfo = studentMap[u.uid];
+        const percentage = studentInfo ? studentInfo.percentage : null;
+        return percentage !== null ? (
+          <div>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className={`font-bold ${percentage >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {percentage}%
+              </span>
+              <span className="text-slate-500 text-[10px] ml-2">
+                {studentInfo.total_classes_present}/{studentInfo.total_classes_conducted}
+              </span>
+            </div>
+            <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${percentage >= 75 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                style={{ width: `${Math.min(percentage, 100)}%` }}
+              ></div>
+            </div>
+          </div>
+        ) : (
+          <span className="text-[11px] text-slate-500">N/A (Staff)</span>
+        );
+      }
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      headerClassName: 'min-w-[180px] text-right whitespace-nowrap',
+      className: 'text-right',
+      render: (u) => {
+        const studentInfo = studentMap[u.uid];
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            {(u.role === 'student' || (u.uid && u.uid.startsWith('STU-'))) && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleToggleDetainStudent(u.uid, studentInfo?.status)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 border cursor-pointer whitespace-nowrap ${
+                    studentInfo?.status === 'Detained'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
+                  }`}
+                  title={
+                    studentInfo?.status === 'Detained'
+                      ? 'Revoke detention and reinstate student'
+                      : 'Detain student for 1 academic year (bar from exams & attendance)'
+                  }
+                  aria-label={studentInfo?.status === 'Detained' ? `Reinstate ${u.name}` : `Detain ${u.name}`}
+                >
+                  <Ban className="w-3 h-3" />
+                  <span>{studentInfo?.status === 'Detained' ? 'Reinstate' : 'Detain'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFaceEnrollTarget({ uid: u.uid, name: u.name })}
+                  className="px-2 py-1 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all flex items-center gap-1 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+                  title={`Enroll Face for ${u.name} (${u.uid})`}
+                  aria-label={`Enroll Face for ${u.name}`}
+                >
+                  <span className="text-xs">📷</span>
+                  <span>Enroll</span>
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => handleDeleteUser(u)}
+              className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer"
+              title="Remove user"
+              aria-label={`Remove user ${u.name}`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        );
+      }
+    }
+  ];
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -245,7 +431,7 @@ export const AdminDashboard = () => {
       </div>
 
       {/* Global Error Banner if initial fetch failed */}
-      {error && users.length === 0 && !loading && (
+      {error && userList.length === 0 && !loading && (
         <ErrorState
           title="Database Connection Offline"
           message={error}
@@ -272,7 +458,7 @@ export const AdminDashboard = () => {
                 </div>
               </div>
               <div className="mt-3 text-3xl font-black text-white">
-                {summary ? summary.totalStudents : students.length}
+                {summary ? summary.totalStudents : studentList.length}
               </div>
               <p className="text-xs text-slate-400 mt-1">Enrolled in 5th Semester</p>
             </div>
@@ -384,183 +570,21 @@ export const AdminDashboard = () => {
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm text-slate-300">
-            <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800">
-              <tr>
-                <th className="px-6 py-3.5 min-w-[220px]">User / Student</th>
-                <th className="px-6 py-3.5 whitespace-nowrap">UID & Enrolment</th>
-                <th className="px-6 py-3.5 whitespace-nowrap">Role & Dept</th>
-                <th className="px-6 py-3.5 whitespace-nowrap">Status</th>
-                <th className="px-6 py-3.5 whitespace-nowrap">Overall Attendance %</th>
-                <th className="px-6 py-3.5 text-right whitespace-nowrap">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {loading ? (
-                <>
-                  <SkeletonTableRow columns={6} />
-                  <SkeletonTableRow columns={6} />
-                  <SkeletonTableRow columns={6} />
-                  <SkeletonTableRow columns={6} />
-                  <SkeletonTableRow columns={6} />
-                </>
-              ) : filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>
-                    <EmptyState
-                      icon={Users}
-                      title="No matching members found"
-                      description={
-                        searchQuery
-                          ? `No members match "${searchQuery}" for role "${selectedRole}".`
-                          : "No records currently registered under this filter."
-                      }
-                      actionLabel={searchQuery ? "Clear Search Filter" : undefined}
-                      onAction={searchQuery ? () => setSearchQuery('') : undefined}
-                    />
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((u) => {
-                  const studentInfo = studentMap[u.uid];
-                  const percentage = studentInfo ? studentInfo.percentage : null;
-                  const enrolment = studentInfo ? studentInfo.enrolment_number : '-';
-
-                  return (
-                    <tr key={u.id} className="hover:bg-slate-900/50 transition-colors">
-                      {/* Name & Photo */}
-                      <td className="px-6 py-4 min-w-[220px]">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={cleanAvatarUrl(u.avatar, u.name, null, u.role === 'faculty' || u.role === 'hod')}
-                            alt={u.name}
-                            className="w-10 h-10 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700 shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <div className="font-semibold text-white whitespace-nowrap">{u.name}</div>
-                            <div className="text-xs text-slate-400 font-mono truncate max-w-[180px]">{u.email}</div>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* UID & Enrolment */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-mono text-xs text-indigo-300 font-semibold">{u.uid}</div>
-                        {enrolment !== '-' && (
-                          <div className="text-xs text-slate-400 font-mono">EN: {enrolment}</div>
-                        )}
-                      </td>
-
-                      {/* Role & Dept */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
-                              u.role === 'admin'
-                                ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
-                                : u.role === 'hod'
-                                ? 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
-                                : u.role === 'faculty'
-                                ? 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
-                                : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
-                            }`}
-                          >
-                            {u.role}
-                          </span>
-                          <span className="text-xs text-slate-400">{u.department}</span>
-                        </div>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {studentInfo?.status === 'Detained' ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                            Detained (1-Yr Bar)
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                            {studentInfo ? studentInfo.status : 'Active'}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Overall Attendance Percentage */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {percentage !== null ? (
-                          <div>
-                            <div className="flex items-center justify-between text-xs mb-1">
-                              <span className={`font-bold ${percentage >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                {percentage}%
-                              </span>
-                              <span className="text-slate-500 text-[10px] ml-2">
-                                {studentInfo.total_classes_present}/{studentInfo.total_classes_conducted}
-                              </span>
-                            </div>
-                            <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${percentage >= 75 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                                style={{ width: `${Math.min(percentage, 100)}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-500">N/A (Staff)</span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-2">
-                          {(u.role === 'student' || (u.uid && u.uid.startsWith('STU-'))) && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleDetainStudent(u.uid, studentInfo?.status)}
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 border cursor-pointer ${
-                                  studentInfo?.status === 'Detained'
-                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-                                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
-                                }`}
-                                title={
-                                  studentInfo?.status === 'Detained'
-                                    ? 'Revoke detention and reinstate student'
-                                    : 'Detain student for 1 academic year (bar from exams & attendance)'
-                                }
-                              >
-                                <Ban className="w-3.5 h-3.5" />
-                                <span>{studentInfo?.status === 'Detained' ? 'Reinstate' : 'Detain'}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => setFaceEnrollTarget({ uid: u.uid, name: u.name })}
-                                className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-                                title={`Enroll Face for ${u.name} (${u.uid})`}
-                              >
-                                <span className="text-sm">📷</span>
-                                <span>Enroll</span>
-                              </button>
-                            </>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteUser(u)}
-                            className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer"
-                            title="Remove user"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        <div className="p-4 sm:p-6">
+          <InfiniteTable
+            columns={adminColumns}
+            items={adminUsersQuery.items.length > 0 ? adminUsersQuery.items : (adminUsersQuery.isInitialLoading ? [] : filteredUsers)}
+            loading={adminUsersQuery.isInitialLoading}
+            loadingMore={adminUsersQuery.isLoadingMore}
+            error={adminUsersQuery.error}
+            hasMore={adminUsersQuery.hasMore}
+            sentinelRef={adminUsersQuery.sentinelRef}
+            onRetry={adminUsersQuery.refresh}
+            emptyMessage={searchQuery ? `No members match "${searchQuery}" for role "${selectedRole}".` : "No records currently registered under this filter."}
+            tableAriaLabel="Members roster management table"
+            minWidth="1050px"
+            itemCountLabel={`Showing ${adminUsersQuery.items.length > 0 ? adminUsersQuery.items.length : filteredUsers.length} of ${adminUsersQuery.total || (adminUsersQuery.items.length > 0 ? adminUsersQuery.items.length : filteredUsers.length)} members`}
+          />
         </div>
       </div>
 
@@ -697,7 +721,13 @@ export const AdminDashboard = () => {
           onClose={() => setFaceEnrollTarget(null)}
           uid={faceEnrollTarget.uid}
           studentName={faceEnrollTarget.name}
-          onComplete={(count) => notify(`Enrolled ${count} face photos for ${faceEnrollTarget.name}`)}
+          onComplete={(count) => {
+            notify(`Enrolled ${count} face photo(s) for ${faceEnrollTarget.name} & replaced avatar!`);
+            loadData();
+            if (adminUsersQuery && adminUsersQuery.refresh) {
+              adminUsersQuery.refresh();
+            }
+          }}
         />
       )}
     </div>

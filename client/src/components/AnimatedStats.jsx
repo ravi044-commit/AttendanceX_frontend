@@ -117,7 +117,7 @@ export const AnimatedStats = () => {
           <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
           <span>Department Performance Benchmarks</span>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+        <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
           Trusted by Academic Leads for High-Accuracy Telemetry
         </h2>
       </div>
@@ -128,9 +128,9 @@ export const AnimatedStats = () => {
           return (
             <div
               key={stat.id}
-              className={`group relative glass-card p-6 rounded-2xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${stat.borderColor}`}
+              className={`group relative glass-card p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/60 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${stat.borderColor}`}
               style={{
-                boxShadow: `0 0 0 1px rgba(255, 255, 255, 0.03), 0 20px 40px -15px rgba(0, 0, 0, 0.7)`,
+                boxShadow: `0 0 0 1px rgba(255, 255, 255, 0.03), 0 20px 40px -15px rgba(0, 0, 0, 0.08)`,
               }}
             >
               {/* Subtle top specular border highlight */}
@@ -143,30 +143,30 @@ export const AnimatedStats = () => {
 
               <div className="flex items-center justify-between mb-4">
                 <div
-                  className={`w-11 h-11 rounded-xl bg-gradient-to-tr ${stat.color} p-0.5 flex items-center justify-center shadow-lg shadow-black/40 group-hover:scale-105 transition-transform`}
+                  className={`w-11 h-11 rounded-xl bg-gradient-to-tr ${stat.color} p-0.5 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform`}
                 >
-                  <div className="w-full h-full bg-slate-950/80 rounded-[10px] flex items-center justify-center">
-                    <Icon className="w-5 h-5 text-slate-100" />
+                  <div className="w-full h-full bg-white dark:bg-slate-950/80 rounded-[10px] flex items-center justify-center">
+                    <Icon className="w-5 h-5 text-indigo-600 dark:text-slate-100" />
                   </div>
                 </div>
 
-                <span className="text-[11px] font-semibold tracking-tight px-2.5 py-0.5 rounded-full bg-slate-800/80 text-slate-300 border border-slate-700/60 flex items-center gap-1">
-                  <TrendingUp className="w-3 h-3 text-emerald-400" />
+                <span className="text-[11px] font-semibold tracking-tight px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
                   {stat.trend}
                 </span>
               </div>
 
               <div className="space-y-1">
-                <div className="text-3xl sm:text-4xl font-black tracking-tight text-white flex items-baseline">
+                <div className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white flex items-baseline">
                   <span>{stat.format(counts[idx])}</span>
-                  <span className="text-indigo-400 text-2xl font-bold ml-0.5">{stat.suffix}</span>
+                  <span className="text-indigo-600 dark:text-indigo-400 text-2xl font-bold ml-0.5">{stat.suffix}</span>
                 </div>
 
-                <div className="text-sm font-semibold text-slate-200">
+                <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                   {stat.label}
                 </div>
 
-                <p className="text-xs text-slate-400 leading-relaxed pt-1">
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
                   {stat.description}
                 </p>
               </div>

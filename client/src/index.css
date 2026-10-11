@@ -2,24 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root,
+[data-theme="dark"],
+.dark {
+  color-scheme: dark;
+  --bg-primary: #030712;
+  --bg-secondary: #0b1120;
+  --bg-card: rgba(15, 23, 42, 0.75);
+  --bg-card-hover: rgba(30, 41, 59, 0.85);
+  --bg-glass: rgba(15, 23, 42, 0.65);
+  --bg-input: rgba(3, 7, 18, 0.85);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-card: rgba(255, 255, 255, 0.07);
+  --border-focus: rgba(99, 102, 241, 0.5);
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --accent-primary: #6366f1;
+  --accent-secondary: #8b5cf6;
+  --accent-glow: rgba(99, 102, 241, 0.35);
+  --nav-bg: rgba(3, 7, 18, 0.85);
+  --nav-border: rgba(30, 41, 59, 0.8);
+  --footer-bg: #000000;
+  --scrollbar-track: rgba(3, 7, 18, 0.8);
+  --scrollbar-thumb: rgba(99, 102, 241, 0.28);
+}
+
 @layer base {
   html {
-    color-scheme: dark;
     scroll-behavior: smooth;
+    overflow-x: hidden;
   }
 
   body {
     background-color: #030712;
-    color: #f1f5f9;
+    color: #f8fafc;
     min-height: 100vh;
     overflow-x: hidden;
+    background-attachment: fixed;
     background-image: 
       radial-gradient(ellipse 90% 60% at 50% -25%, rgba(99, 102, 241, 0.22) 0%, transparent 60%),
       radial-gradient(ellipse 70% 45% at 85% 15%, rgba(168, 85, 247, 0.14) 0%, transparent 55%),
       radial-gradient(ellipse 65% 40% at 15% 25%, rgba(59, 130, 246, 0.12) 0%, transparent 55%),
       radial-gradient(ellipse 80% 50% at 50% 100%, rgba(79, 70, 229, 0.08) 0%, transparent 60%);
-    background-attachment: fixed;
   }
+}
+
+/* ─── Google Identity Services Responsive Enclosure ──────────────────────── */
+#googleSignInBtnContainer {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  overflow: hidden !important;
+}
+
+#googleSignInBtnContainer iframe,
+#googleSignInBtnContainer > div {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 /* ─── Modern Custom Scrollbars ─────────────────────────────────────────────── */
@@ -78,26 +126,52 @@
   }
 }
 
+/* ─── Animated Shimmering Gradient Brand Text ────────────────────────────── */
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 .animated-gradient-brand {
-  background: linear-gradient(
+  display: inline-block;
+  background-size: 250% auto !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  animation: gradient-flow 6.5s ease-in-out infinite !important;
+}
+
+/* Dark mode brand gradient: glowing cyber white, lavender, violet & electric cyan */
+:root .animated-gradient-brand,
+[data-theme="dark"] .animated-gradient-brand,
+.dark .animated-gradient-brand {
+  background-image: linear-gradient(
     90deg,
     #ffffff 0%,
     #e0e7ff 18%,
-    #a5b4fc 36%,
-    #c084fc 54%,
-    #818cf8 72%,
-    #38bdf8 88%,
+    #c084fc 36%,
+    #818cf8 54%,
+    #38bdf8 72%,
+    #c084fc 88%,
     #ffffff 100%
-  );
-  background-size: 250% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: gradient-flow 6.5s ease-in-out infinite;
+  ) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
 }
 
 /* Glowing text effects */
 .glow-text {
+  transition: text-shadow 0.3s ease;
   text-shadow: 0 0 24px rgba(99, 102, 241, 0.55), 0 0 48px rgba(168, 85, 247, 0.25);
 }
 
@@ -252,4 +326,76 @@
   .btn-secondary-glow:hover {
     transform: none !important;
   }
+}
+
+/* ─── Footer Black Styling ─────────────────────────────────────────────────── */
+footer {
+  background-color: #000000 !important;
+  color: #cbd5e1 !important;
+  border-top: 1px solid #27272a !important;
+}
+
+footer h1,
+footer h2,
+footer h3,
+footer h4,
+footer strong,
+footer .text-white {
+  color: #ffffff !important;
+}
+
+footer p,
+footer li,
+footer span,
+footer button,
+footer a {
+  color: #cbd5e1;
+}
+
+footer button:hover,
+footer a:hover {
+  color: #ffffff !important;
+}
+
+footer .text-slate-200 {
+  color: #f1f5f9 !important;
+}
+
+footer .text-slate-300 {
+  color: #e2e8f0 !important;
+}
+
+footer .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+footer .text-slate-500 {
+  color: #71717a !important;
+}
+
+/* Pills and badges inside footer */
+footer .bg-zinc-900,
+footer .bg-neutral-900,
+footer .bg-slate-900,
+footer .bg-slate-950,
+footer .bg-white {
+  background-color: #18181b !important;
+  color: #e2e8f0 !important;
+  border-color: #27272a !important;
+}
+
+footer .border-zinc-800,
+footer .border-neutral-800,
+footer .border-slate-800,
+footer .border-slate-700,
+footer .border-slate-900 {
+  border-color: #27272a !important;
+}
+
+/* Buttons with vibrant gradients keep their white text */
+.btn-primary-glow,
+.btn-primary-glow *,
+button[type="submit"],
+button[type="submit"] * {
+  color: #ffffff !important;
 }

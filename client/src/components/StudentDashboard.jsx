@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   GraduationCap, Calendar, CheckCircle2, XCircle, Award,
   Clock, BookOpen, AlertCircle, Sparkles, Filter, Search, RefreshCw, BarChart2,
@@ -10,6 +10,8 @@ import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
 import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 import { AccountSecurityModal } from './AccountSecurityModal';
+import { useInfiniteList } from '../hooks/useInfiniteList';
+import { InfiniteTable } from './InfiniteTable';
 import {
   Skeleton,
   SkeletonMetricCard,
@@ -30,6 +32,25 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
   const [filterType, setFilterType] = useState('All'); // 'All', 'Lecture', 'Lab'
   const [searchSubject, setSearchSubject] = useState('');
   const [activeInfoCard, setActiveInfoCard] = useState(null); // 'overall' | 'theory' | 'lab' | null
+
+  const studentUid = studentInfo?.uid || user?.uid || user?.studentData?.uid;
+
+  // Infinite query for attendance history
+  const historyQuery = useInfiniteList(
+    useCallback(
+      (params) => {
+        if (!studentUid) return Promise.resolve({ items: [], total: 0, hasMore: false });
+        return api.getStudentAttendanceHistory(studentUid, {
+          search: searchSubject,
+          session_type: filterType !== 'All' ? filterType : undefined,
+          ...params,
+        });
+      },
+      [studentUid, searchSubject, filterType]
+    ),
+    { search: searchSubject, session_type: filterType },
+    { limit: 20, enabled: Boolean(studentUid) }
+  );
 
   // View full session attendance roster state (like HOD view)
   const [selectedSessionModal, setSelectedSessionModal] = useState(null);
@@ -52,18 +73,21 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
         date: sessionItem.date,
         subject_name: sessionItem.subject_name,
         session_type: sessionItem.session_type,
-        department: 'Computer Department'
+        department: 'Computer Department',
+        all: 'true'
       });
       // Fallback if specific subject/session_type query returns empty
       if (!records || records.length === 0) {
         records = await api.getAttendanceRecords({
           date: sessionItem.date,
-          department: 'Computer Department'
+          department: 'Computer Department',
+          all: 'true'
         });
       }
-      setSessionRecords(records || []);
+      setSessionRecords(Array.isArray(records) ? records : (records?.items || []));
     } catch (err) {
       console.error('Failed to load session attendance records:', err);
+      setSessionRecords([]);
     } finally {
       setLoadingSessionRecords(false);
     }
@@ -189,6 +213,17 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
   useEffect(() => {
     loadStudentData();
   }, [user]);
+
+  // Prevent background page scrolling & double scroll when attendance modal is open
+  useEffect(() => {
+    if (selectedSessionModal || showFaceModal || showSecurityModal) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [selectedSessionModal, showFaceModal, showSecurityModal]);
 
   if (loading && !studentInfo) {
     return (
@@ -394,6 +429,105 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
       ? s.subject_attendance
       : defaultSubjectAttendance;
 
+  const historyColumns = [
+    {
+      key: 'date',
+      label: 'Date',
+      headerClassName: 'min-w-[110px] whitespace-nowrap',
+      render: (item) => (
+        <span className="font-mono text-xs text-indigo-300 whitespace-nowrap">{item.date}</span>
+      )
+    },
+    {
+      key: 'subject_name',
+      label: 'Subject',
+      headerClassName: 'min-w-[220px]',
+      render: (item) => (
+        <span className="font-semibold text-white whitespace-nowrap">{item.subject_name}</span>
+      )
+    },
+    {
+      key: 'session_type',
+      label: 'Type',
+      headerClassName: 'min-w-[90px] whitespace-nowrap',
+      render: (item) => (
+        <span
+          className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+            item.session_type === 'Lab'
+              ? 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
+              : 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
+          }`}
+        >
+          {item.session_type}
+        </span>
+      )
+    },
+    {
+      key: 'marked_by',
+      label: 'Faculty Marked By',
+      headerClassName: 'min-w-[160px] whitespace-nowrap',
+      render: (item) => (
+        <span className="text-slate-400 text-xs whitespace-nowrap">{item.marked_by}</span>
+      )
+    },
+    {
+      key: 'batch_present',
+      label: 'Batch Present',
+      headerClassName: 'min-w-[150px] whitespace-nowrap',
+      render: (item) => {
+        const isPresent = item.status === 'Present';
+        const presentCount = item.session_present_count != null ? item.session_present_count : (isPresent ? 95 : 94);
+        const totalCount = item.session_total_students || 99;
+        return (
+          <div className="flex items-center gap-1.5 font-mono text-xs whitespace-nowrap">
+            <span className="font-bold text-emerald-400">{presentCount}</span>
+            <span className="text-slate-400">/ {totalCount} Present</span>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'status',
+      label: 'Your Status',
+      headerClassName: 'min-w-[130px] whitespace-nowrap',
+      render: (item) => {
+        const isPresent = item.status === 'Present';
+        return (
+          <span
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
+              isPresent
+                ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
+                : 'bg-rose-500/10 text-rose-300 border border-rose-500/30'
+            }`}
+          >
+            {isPresent ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <XCircle className="w-3.5 h-3.5 text-rose-400" />
+            )}
+            <span>{item.status}</span>
+          </span>
+        );
+      }
+    },
+    {
+      key: 'actions',
+      label: 'Class Attendance',
+      headerClassName: 'min-w-[150px] text-right whitespace-nowrap',
+      className: 'text-right',
+      render: (item) => (
+        <button
+          onClick={() => handleOpenSessionModal(item)}
+          className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold inline-flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 shadow-md shadow-indigo-950/40 cursor-pointer"
+          aria-label={`View class attendance for ${item.subject_name} on ${item.date}`}
+        >
+          <Eye className="w-3.5 h-3.5" />
+          <span>View Attendance</span>
+        </button>
+      )
+    }
+  ];
+
   return (
     <div className="space-y-8 animate-fadeIn">
       {/* Top Banner / Student Profile Card */}
@@ -460,18 +594,7 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
                 </select>
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                if (onOpenSecurity) onOpenSecurity();
-                else setShowSecurityModal(true);
-              }}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs sm:text-sm flex items-center gap-2 border border-emerald-400/30 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-              title="Change Email (Normal or .edu) & Password with OTP"
-            >
-              <Mail className="w-4 h-4" />
-              <span>Change Me</span>
-            </button>
+
             <button
               type="button"
               onClick={() => setShowFaceModal(true)}
@@ -1097,6 +1220,7 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
             <div className="relative">
               <input
                 type="text"
+                aria-label="Search attendance subject"
                 value={searchSubject}
                 onChange={(e) => setSearchSubject(e.target.value)}
                 placeholder="Search subject..."
@@ -1106,112 +1230,36 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px] text-left text-sm text-slate-300">
-            <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800">
-              <tr>
-                <th className="px-6 py-3.5 whitespace-nowrap">Date</th>
-                <th className="px-6 py-3.5 min-w-[200px]">Subject</th>
-                <th className="px-6 py-3.5 whitespace-nowrap">Type</th>
-                <th className="px-6 py-3.5 whitespace-nowrap">Faculty Marked By</th>
-                <th className="px-6 py-3.5 whitespace-nowrap">Batch Present</th>
-                <th className="px-6 py-3.5 whitespace-nowrap">Your Status</th>
-                <th className="px-6 py-3.5 text-right whitespace-nowrap">Class Attendance</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {filteredHistory.length === 0 ? (
-                <tr>
-                  <td colSpan={7}>
-                    <EmptyState
-                      icon={Calendar}
-                      title="No attendance records found"
-                      description={
-                        searchSubject
-                          ? `No sessions match "${searchSubject}".`
-                          : "No session roll calls recorded for your enrollment ID yet."
-                      }
-                      actionLabel={searchSubject ? "Clear Filter" : undefined}
-                      onAction={searchSubject ? () => setSearchSubject('') : undefined}
-                    />
-                  </td>
-                </tr>
-              ) : (
-                filteredHistory.map((item) => {
-                  const isPresent = item.status === 'Present';
-                  const presentCount = item.session_present_count != null ? item.session_present_count : (isPresent ? 95 : 94);
-                  const totalCount = item.session_total_students || 99;
-
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-900/40 transition-colors">
-                      <td className="px-6 py-4 font-mono text-xs text-indigo-300 whitespace-nowrap">
-                        {item.date}
-                      </td>
-                      <td className="px-6 py-4 font-semibold text-white min-w-[200px] whitespace-nowrap">
-                        {item.subject_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${item.session_type === 'Lab'
-                              ? 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
-                              : 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
-                            }`}
-                        >
-                          {item.session_type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-slate-400 text-xs whitespace-nowrap">
-                        {item.marked_by}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 font-mono text-xs">
-                          <span className="font-bold text-emerald-400">
-                            {presentCount}
-                          </span>
-                          <span className="text-slate-400">/ {totalCount} Present</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${isPresent
-                              ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-rose-500/10 text-rose-300 border border-rose-500/30'
-                            }`}
-                        >
-                          {isPresent ? (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                          )}
-                          <span>{item.status}</span>
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => handleOpenSessionModal(item)}
-                          className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold inline-flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 shadow-md shadow-indigo-950/40 cursor-pointer"
-                          title="Click to view all student attendance in this session"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View Attendance</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        <div className="p-4 sm:p-6">
+          <InfiniteTable
+            columns={historyColumns}
+            items={historyQuery.items.length > 0 ? historyQuery.items : (historyQuery.isInitialLoading ? [] : filteredHistory)}
+            loading={historyQuery.isInitialLoading}
+            loadingMore={historyQuery.isLoadingMore}
+            error={historyQuery.error}
+            hasMore={historyQuery.hasMore}
+            sentinelRef={historyQuery.sentinelRef}
+            onRetry={historyQuery.refresh}
+            emptyMessage={searchSubject ? `No sessions match "${searchSubject}".` : "No session roll calls recorded for your enrollment ID yet."}
+            tableAriaLabel="Student attendance history records"
+            minWidth="1010px"
+            itemCountLabel={`Showing ${historyQuery.items.length > 0 ? historyQuery.items.length : filteredHistory.length} of ${historyQuery.total || (historyQuery.items.length > 0 ? historyQuery.items.length : filteredHistory.length)} sessions`}
+          />
         </div>
       </div>
 
       {/* FULL SESSION ATTENDANCE SHEET MODAL (VIEW ALL STUDENTS LIKE HOD) */}
       {selectedSessionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-hidden overscroll-contain"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedSessionModal(null);
+          }}
+        >
           <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden my-auto animate-fadeIn">
 
             {/* Modal Header */}
-            <div className="p-5 sm:p-6 border-b border-slate-800 flex items-start sm:items-center justify-between gap-4 bg-slate-950/60">
+            <div className="p-5 sm:p-6 border-b border-slate-800 flex items-start sm:items-center justify-between gap-4 bg-slate-950/60 shrink-0">
               <div>
                 <div className="flex flex-wrap items-center gap-2 mb-1.5">
                   <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono">
@@ -1245,7 +1293,7 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
             </div>
 
             {/* Quick Stats & Filters Bar */}
-            <div className="p-4 border-b border-slate-800 bg-slate-900/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="p-4 border-b border-slate-800 bg-slate-900/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
               <div className="flex flex-wrap items-center gap-2">
                 {/* Status Filter */}
                 <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
@@ -1298,14 +1346,15 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
             </div>
 
             {/* Students List Table */}
-            <div className="overflow-y-auto flex-1 p-2 sm:p-4">
+            <div className="overflow-y-auto flex-1 min-h-0 p-2 sm:p-4 overscroll-contain">
               {loadingSessionRecords ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-3">
                   <RefreshCw className="w-7 h-7 text-indigo-400 animate-spin" />
                   <span className="text-xs text-slate-400 font-semibold">Loading student roll call...</span>
                 </div>
               ) : (() => {
-                const filtered = sessionRecords.filter((r) => {
+                const safeRecords = Array.isArray(sessionRecords) ? sessionRecords : (sessionRecords?.items || []);
+                const filtered = safeRecords.filter((r) => {
                   const matchesStatus = modalFilterStatus === 'All' || r.status === modalFilterStatus;
                   const rClass = getStudentClass(r.enrolment_number, r.student_uid);
                   const matchesBatch = matchesClassFilter(rClass, modalBatchFilter);
@@ -1327,8 +1376,8 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
                   );
                 }
 
-                const presentTotal = sessionRecords.filter(r => r.status === 'Present').length;
-                const absentTotal = sessionRecords.length - presentTotal;
+                const presentTotal = safeRecords.filter(r => r.status === 'Present').length;
+                const absentTotal = safeRecords.length - presentTotal;
 
                 return (
                   <div className="space-y-3">
@@ -1426,7 +1475,7 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between shrink-0">
               <span className="text-xs text-slate-400">
                 Official SQLite Student Ledger
               </span>
@@ -1449,6 +1498,20 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
           onClose={() => setShowFaceModal(false)}
           uid={s.uid}
           studentName={s.name}
+          onComplete={(count, photoUrl) => {
+            const updatedPhoto = photoUrl || `/api/face/photo/${s.uid}?t=${Date.now()}`;
+            setStudentInfo((prev) => (prev ? { ...prev, student_photo: updatedPhoto } : prev));
+            if (onUserUpdated && user) {
+              onUserUpdated({
+                ...user,
+                avatar: updatedPhoto,
+                studentData: {
+                  ...(user.studentData || {}),
+                  student_photo: updatedPhoto
+                }
+              });
+            }
+          }}
         />
       )}
 

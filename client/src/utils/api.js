@@ -27,6 +27,16 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = 12000) => {
       signal: options.signal || controller.signal,
     });
     clearTimeout(timer);
+    if (res.status === 401 && typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('attendancex_user');
+        localStorage.removeItem('attendancex_token');
+        localStorage.removeItem('attendx_user');
+        localStorage.removeItem('attendx_token');
+        sessionStorage.clear();
+        window.dispatchEvent(new CustomEvent('attendancex_unauthorized'));
+      } catch {}
+    }
     return res;
   } catch (err) {
     clearTimeout(timer);
@@ -37,12 +47,41 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = 12000) => {
   }
 };
 
+const parseResponse = async (res, defaultErrorMessage = 'Request failed') => {
+  let text = '';
+  try {
+    text = await res.text();
+  } catch (err) {
+    if (!res.ok) throw new Error(defaultErrorMessage);
+    return {};
+  }
+
+  let data = null;
+  if (text && text.trim()) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!res.ok) {
+    const errorMsg =
+      (data && (data.error || data.message)) ||
+      (text && text.length < 200 && !text.includes('<!DOCTYPE') ? text : null) ||
+      defaultErrorMessage;
+    throw new Error(errorMsg);
+  }
+
+  return data !== null ? data : {};
+};
+
 export const api = {
   // System Health
   checkHealth: async () => {
     try {
       const res = await fetchWithTimeout(`${API_BASE}/health`);
-      return await res.json();
+      return await parseResponse(res, 'Health check failed');
     } catch {
       return { status: 'offline' };
     }
@@ -55,9 +94,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, role }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to sign in');
-    return data;
+    return parseResponse(res, 'Failed to sign in');
   },
 
   register: async (payload) => {
@@ -66,9 +103,42 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to create account');
-    return data;
+    return parseResponse(res, 'Failed to create account');
+  },
+
+  // Google Identity Services (GIS) OAuth
+  googleLogin: async (credential, role = null) => {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential, role }),
+    });
+    return parseResponse(res, 'Google Sign-In failed');
+  },
+
+  linkGoogleAccount: async ({ linkToken, identifier, password }) => {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/google/link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linkToken, identifier, password }),
+    });
+    return parseResponse(res, 'Failed to link Google account');
+  },
+
+  unlinkGoogleAccount: async (password) => {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/google/unlink`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ password }),
+    });
+    return parseResponse(res, 'Failed to unlink Google account');
+  },
+
+  getGoogleStatus: async () => {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/google/status`, {
+      headers: { ...getAuthHeaders() },
+    });
+    return parseResponse(res, 'Failed to fetch Google link status');
   },
 
   // Feature 6: Email OTP Verification & Account Security
@@ -86,9 +156,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ email, purpose, currentEmail, uid }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to send verification code');
-    return data;
+    return parseResponse(res, 'Failed to send verification code');
   },
 
   verifyOtp: async (email, otp, purpose) => {
@@ -97,9 +165,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ email, otp, purpose }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Invalid or expired verification code');
-    return data;
+    return parseResponse(res, 'Invalid or expired verification code');
   },
 
   resetPassword: async (resetAuthorization, newPassword) => {
@@ -108,9 +174,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ resetAuthorization, newPassword }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to reset password');
-    return data;
+    return parseResponse(res, 'Failed to reset password');
   },
 
   verifyEmailChange: async (newEmail, otp, currentEmailOrUser = null) => {
@@ -127,9 +191,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ newEmail, otp, currentEmail, uid }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to verify and update email');
-    return data;
+    return parseResponse(res, 'Failed to verify and update email');
   },
 
   verifyAccountSetup: async (email, otp, password) => {
@@ -138,18 +200,14 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, otp, password }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to complete account setup');
-    return data;
+    return parseResponse(res, 'Failed to complete account setup');
   },
 
   getMe: async () => {
     const res = await fetchWithTimeout(`${API_BASE}/auth/me`, {
       headers: { ...getAuthHeaders() }
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to fetch current user profile');
-    return data;
+    return parseResponse(res, 'Failed to fetch current user profile');
   },
 
   // Students
@@ -158,16 +216,30 @@ export const api = {
     const res = await fetchWithTimeout(`${API_BASE}/students?${query}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch students');
-    return res.json();
+    const data = await parseResponse(res, 'Failed to fetch students');
+    if (data && typeof data === 'object' && Array.isArray(data.items)) {
+      return data;
+    }
+    return Array.isArray(data) ? data : [];
+  },
+
+  getStudentAttendanceHistory: async (uid, params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetchWithTimeout(`${API_BASE}/students/${uid}/attendance-history?${query}`, {
+      headers: { ...getAuthHeaders() }
+    });
+    const data = await parseResponse(res, 'Failed to fetch attendance history');
+    if (data && typeof data === 'object' && Array.isArray(data.items)) {
+      return data;
+    }
+    return Array.isArray(data) ? data : [];
   },
 
   getStudentByUid: async (uid) => {
     const res = await fetchWithTimeout(`${API_BASE}/students/${uid}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch student details');
-    return res.json();
+    return parseResponse(res, 'Failed to fetch student details');
   },
 
   createStudent: async (studentData) => {
@@ -176,9 +248,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(studentData),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to create student');
-    return data;
+    return parseResponse(res, 'Failed to create student');
   },
 
   updateStudent: async (uid, updates) => {
@@ -187,9 +257,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(updates),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update student');
-    return data;
+    const data = await parseResponse(res, 'Failed to update student');
+    return { uid, ...updates, ...(typeof data === 'object' && data !== null ? data : {}) };
   },
 
   deleteStudent: async (uid) => {
@@ -197,9 +266,7 @@ export const api = {
       method: 'DELETE',
       headers: { ...getAuthHeaders() }
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to delete student');
-    return data;
+    return parseResponse(res, 'Failed to delete student');
   },
 
   // Users (Admin user management)
@@ -208,8 +275,11 @@ export const api = {
     const res = await fetchWithTimeout(`${API_BASE}/users?${query}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch users');
-    return res.json();
+    const data = await parseResponse(res, 'Failed to fetch users');
+    if (data && typeof data === 'object' && Array.isArray(data.items)) {
+      return data;
+    }
+    return Array.isArray(data) ? data : [];
   },
 
   createUser: async (userData) => {
@@ -218,9 +288,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(userData),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to add user');
-    return data;
+    return parseResponse(res, 'Failed to add user');
   },
 
   deleteUser: async (id) => {
@@ -228,9 +296,7 @@ export const api = {
       method: 'DELETE',
       headers: { ...getAuthHeaders() }
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to delete user');
-    return data;
+    return parseResponse(res, 'Failed to delete user');
   },
 
   // Classes & Attendance
@@ -239,8 +305,14 @@ export const api = {
     const res = await fetchWithTimeout(`${API_BASE}/classes?${query}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch classes');
-    return res.json();
+    const data = await parseResponse(res, 'Failed to fetch classes');
+    if (data && typeof data === 'object' && Array.isArray(data.items)) {
+      if (params.page !== undefined) {
+        return data;
+      }
+      return data.items;
+    }
+    return Array.isArray(data) ? data : [];
   },
 
   markAttendance: async (payload) => {
@@ -249,25 +321,29 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to submit attendance');
-    return data;
+    return parseResponse(res, 'Failed to submit attendance');
   },
 
   getAttendanceSummary: async (department = 'Computer Department') => {
     const res = await fetchWithTimeout(`${API_BASE}/attendance/summary?department=${encodeURIComponent(department)}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch attendance summary');
-    return res.json();
+    return parseResponse(res, 'Failed to fetch attendance summary');
   },
 
-  getAttendanceSessions: async (department = 'Computer Department') => {
-    const res = await fetchWithTimeout(`${API_BASE}/attendance/sessions-list?department=${encodeURIComponent(department)}`, {
+  getAttendanceSessions: async (department = 'Computer Department', params = {}) => {
+    const query = new URLSearchParams({ department, ...params }).toString();
+    const res = await fetchWithTimeout(`${API_BASE}/attendance/sessions-list?${query}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch attendance sessions');
-    return res.json();
+    const data = await parseResponse(res, 'Failed to fetch attendance sessions');
+    if (data && typeof data === 'object' && Array.isArray(data.items)) {
+      if (params.page !== undefined) {
+        return data;
+      }
+      return data.items;
+    }
+    return Array.isArray(data) ? data : [];
   },
 
   getAttendanceRecords: async (params = {}) => {
@@ -275,8 +351,14 @@ export const api = {
     const res = await fetchWithTimeout(`${API_BASE}/attendance/records?${query}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch attendance records');
-    return res.json();
+    const data = await parseResponse(res, 'Failed to fetch attendance records');
+    if (data && typeof data === 'object' && Array.isArray(data.items)) {
+      if (params.page !== undefined) {
+        return data;
+      }
+      return data.items;
+    }
+    return Array.isArray(data) ? data : [];
   },
 
   updateSingleAttendanceRecord: async (payload) => {
@@ -285,17 +367,14 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update attendance status');
-    return data;
+    return parseResponse(res, 'Failed to update attendance status');
   },
 
   getDepartmentStats: async (department = 'Computer Department') => {
     const res = await fetchWithTimeout(`${API_BASE}/department/stats?department=${encodeURIComponent(department)}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch department statistics');
-    return res.json();
+    return parseResponse(res, 'Failed to fetch department statistics');
   },
 
   freezeAttendance: async (payload) => {
@@ -304,25 +383,22 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to freeze attendance session');
-    return data;
+    return parseResponse(res, 'Failed to freeze attendance session');
   },
 
   getAttendanceLockStatus: async (date, department = 'Computer Department') => {
     const res = await fetchWithTimeout(`${API_BASE}/attendance/lock-status?date=${encodeURIComponent(date)}&department=${encodeURIComponent(department)}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch lock status');
-    return res.json();
+    return parseResponse(res, 'Failed to fetch lock status');
   },
 
   getAllAttendanceLocks: async (department = 'Computer Department') => {
     const res = await fetchWithTimeout(`${API_BASE}/attendance/all-locks?department=${encodeURIComponent(department)}`, {
       headers: { ...getAuthHeaders() }
     });
-    if (!res.ok) throw new Error('Failed to fetch attendance locks');
-    return res.json();
+    const data = await parseResponse(res, 'Failed to fetch attendance locks');
+    return Array.isArray(data) ? data : [];
   },
 
   // Face Recognition Enrollment
@@ -336,9 +412,7 @@ export const api = {
     if (!contentType.includes('application/json')) {
       throw new Error(`Backend server not reachable at ${API_BASE} (received HTML). Make sure your backend server is running on http://localhost:5000.`);
     }
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to enroll face photo');
-    return data;
+    return parseResponse(res, 'Failed to enroll face photo');
   },
 
   getFacePhotoCount: async (uid) => {
@@ -348,7 +422,7 @@ export const api = {
       });
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok || !contentType.includes('application/json')) return { photoCount: 0, photos: [] };
-      return await res.json();
+      return await parseResponse(res, 'Failed to fetch face photo count');
     } catch {
       return { photoCount: 0, photos: [] };
     }

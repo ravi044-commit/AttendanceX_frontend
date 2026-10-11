@@ -1,22 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Navbar } from './components/Navbar';
-import { AuthModal } from './components/AuthModal';
-import { AdminDashboard } from './components/AdminDashboard';
-import { FacultyDashboard } from './components/FacultyDashboard';
-import { StudentDashboard } from './components/StudentDashboard';
-import { HodDashboard } from './components/HodDashboard';
-import { TimetableView } from './components/TimetableView';
-import { PerspectiveTunnelGrid } from './components/PerspectiveTunnelGrid';
-import { AnimatedStats } from './components/AnimatedStats';
-import { FeaturesSection } from './components/FeaturesSection';
-import { WorkflowSection } from './components/WorkflowSection';
+import { AnimatedGrid } from './components/AnimatedGrid';
 import { ModernFooter } from './components/ModernFooter';
-import { AccountSecurityModal } from './components/AccountSecurityModal';
 import {
   Shield, GraduationCap, BookOpen, Crown, Sparkles,
-  Database, ArrowRight, CheckCircle2,
-  Cpu, BarChart3, LogIn, Calendar, Layers
+  ArrowRight, CheckCircle2,
+  LogIn, Calendar, Layers
 } from 'lucide-react';
+
+// Code-split pages and modals so users only download their respective role bundles
+const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const FacultyDashboard = lazy(() => import('./components/FacultyDashboard').then(m => ({ default: m.FacultyDashboard })));
+const StudentDashboard = lazy(() => import('./components/StudentDashboard').then(m => ({ default: m.StudentDashboard })));
+const HodDashboard = lazy(() => import('./components/HodDashboard').then(m => ({ default: m.HodDashboard })));
+const TimetableView = lazy(() => import('./components/TimetableView').then(m => ({ default: m.TimetableView })));
+const AuthModal = lazy(() => import('./components/AuthModal').then(m => ({ default: m.AuthModal })));
+const AccountSecurityModal = lazy(() => import('./components/AccountSecurityModal').then(m => ({ default: m.AccountSecurityModal })));
+
+const DashboardLoadingFallback = () => (
+  <div className="space-y-6 animate-pulse py-4" role="status" aria-label="Loading dashboard view">
+    <div className="h-40 bg-slate-900/80 rounded-3xl border border-slate-800/80" />
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="h-28 bg-slate-900/60 rounded-2xl border border-slate-800/60" />
+      ))}
+    </div>
+    <div className="h-80 bg-slate-900/60 rounded-2xl border border-slate-800/60" />
+  </div>
+);
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -46,6 +57,19 @@ export default function App() {
   const [authRole, setAuthRole] = useState('student'); // 'admin', 'student', 'faculty', 'hod'
   const [activeRoleView, setActiveRoleView] = useState('admin'); // For Admin view switching
   const [showTimetable, setShowTimetable] = useState(false);
+
+  // Permanently enforce sleek dark theme and clear any obsolete light theme keys
+  useEffect(() => {
+    try {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      localStorage.removeItem('attendancex_theme');
+      localStorage.removeItem('theme');
+    } catch (e) {
+      // ignore
+    }
+  }, []);
 
   const handleUserUpdated = (updatedUser, newToken) => {
     setUser(updatedUser);
@@ -118,7 +142,7 @@ export default function App() {
       badgeColor: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
       buttonBg: 'hover:bg-amber-500 hover:text-slate-950',
       glowRgba: 'rgba(245, 158, 11, 0.15)',
-      highlights: ['Student & Faculty Directory', 'Relational SQLite3 Control', 'Multi-View Auditor'],
+      highlights: ['Student & Faculty Directory', 'Relational Database Control', 'Multi-View Auditor'],
     },
     {
       id: 'faculty',
@@ -165,14 +189,15 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans relative selection:bg-indigo-500 selection:text-white">
-      {/* 3D Perspective Grid Tunnel Background & Mouse Parallax */}
-      <PerspectiveTunnelGrid />
+    <div className="min-h-screen flex flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans relative selection:bg-indigo-500 selection:text-white transition-colors duration-300">
+      {/* Animated Grid Background - Landing Page Only */}
+      {!user && <AnimatedGrid intensity={0.8} theme="dark" />}
 
-      {/* Ambient Gradient Glow Spheres */}
-      <div className="glow-orb w-[600px] h-[600px] bg-indigo-600/15 -top-40 left-1/2 -translate-x-1/2" />
-      <div className="glow-orb w-[450px] h-[450px] bg-purple-600/10 top-[600px] -right-40" />
-      <div className="glow-orb w-[450px] h-[450px] bg-blue-600/10 top-[1200px] -left-40" />
+      {/* Ambient Gradient Glow Spheres (contained to prevent document overflow) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="glow-orb w-[600px] h-[600px] bg-indigo-600/15 -top-40 left-1/2 -translate-x-1/2" />
+        <div className="glow-orb w-[450px] h-[450px] bg-purple-600/10 top-[450px] -right-40" />
+      </div>
 
       {/* Top Glassmorphic Navbar */}
       <Navbar
@@ -210,16 +235,16 @@ export default function App() {
               </div>
 
               {/* Commanding Headline with Animated Gradient Text */}
-              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white leading-[1.12]">
+              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-slate-900 dark:text-white leading-[1.12]">
                 Smart Academic Attendance with{' '}
-                <span className="animated-gradient-brand glow-text inline-block">
+                <span className="animated-gradient-brand bg-clip-text text-transparent glow-text inline-block">
                   AttendanceX
                 </span>
               </h1>
 
               {/* Subheading */}
-              <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal">
-                Seamless real-time roll call, practical lab & theory tracking, relational SQLite3 persistence, and instant semester percentage metrics for the <strong className="text-white font-semibold">Computer Department</strong>.
+              <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal">
+                Seamless real-time roll call, practical lab & theory tracking, and instant semester percentage metrics for the <strong className="text-slate-900 dark:text-white font-semibold">Computer Department</strong>.
               </p>
 
               {/* Action Buttons */}
@@ -241,26 +266,7 @@ export default function App() {
                   <span>{showTimetable ? 'Hide Timetable' : 'View Timetable'}</span>
                 </button>
               </div>
-
-              {/* Live Technical Badges */}
-              <div className="pt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-400">
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 backdrop-blur-md">
-                  <Database className="w-3.5 h-3.5 text-indigo-400" />
-                  SQLite3 Database Connected
-                </span>
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 backdrop-blur-md">
-                  <Cpu className="w-3.5 h-3.5 text-emerald-400" />
-                  Computer Department Ready
-                </span>
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 backdrop-blur-md">
-                  <BarChart3 className="w-3.5 h-3.5 text-violet-400" />
-                  Interactive Theory & Lab Split
-                </span>
-              </div>
             </div>
-
-            {/* ANIMATED STATISTICS SECTION */}
-            <AnimatedStats />
 
             {/* 4 PORTAL CARDS (ADMIN, STUDENT, FACULTY, HOD) */}
             <div id="portals" className="space-y-6 pt-4">
@@ -269,10 +275,10 @@ export default function App() {
                   <Layers className="w-3.5 h-3.5 text-indigo-400" />
                   <span>Multi-Role Access Control</span>
                 </div>
-                <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                <h2 className="text-2xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                   Select Your Portal Role
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-400">
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
                   Choose your department role to sign into your tailored telemetry dashboard.
                 </p>
               </div>
@@ -297,7 +303,7 @@ export default function App() {
 
                       <div className="relative z-10">
                         <div className="flex items-center justify-between mb-4">
-                          <div className={`p-3 rounded-2xl bg-slate-900/90 border border-slate-700/60 ${rc.textColor} group-hover:scale-110 transition-transform shadow-md`}>
+                          <div className={`p-3 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700/60 ${rc.textColor} group-hover:scale-110 transition-transform shadow-md`}>
                             <Icon className="w-6 h-6" />
                           </div>
                           <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider border ${rc.badgeColor}`}>
@@ -305,11 +311,11 @@ export default function App() {
                           </span>
                         </div>
 
-                        <h3 className="text-xl font-bold text-white group-hover:text-indigo-300 transition-colors">
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-400 transition-colors">
                           {rc.name}
                         </h3>
 
-                        <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
                           {rc.desc}
                         </p>
 
@@ -353,15 +359,11 @@ export default function App() {
                     Close View
                   </button>
                 </div>
-                <TimetableView />
+                <Suspense fallback={<DashboardLoadingFallback />}>
+                  <TimetableView />
+                </Suspense>
               </div>
             )}
-
-            {/* PROFESSIONAL FEATURES SECTION */}
-            <FeaturesSection />
-
-            {/* HOW ATTENDANCEX WORKS SECTION */}
-            <WorkflowSection />
 
           </div>
         ) : (
@@ -429,51 +431,58 @@ export default function App() {
             </div>
 
             {/* Show Timetable OR the dashboards */}
-            {showTimetable ? (
-              <div className="glass-panel p-6 rounded-3xl border border-slate-800">
-                <TimetableView />
-              </div>
-            ) : (
-              <>
-                {/* Render selected dashboard */}
-                {activeRoleView === 'admin' && <AdminDashboard />}
-                {activeRoleView === 'faculty' && <FacultyDashboard user={user} />}
-                {activeRoleView === 'student' && (
-                  <StudentDashboard
-                    user={user}
-                    onUserUpdated={handleUserUpdated}
-                    onOpenSecurity={() => setSecurityModalOpen(true)}
-                  />
-                )}
-                {activeRoleView === 'hod' && <HodDashboard user={user} />}
-              </>
-            )}
+            <Suspense fallback={<DashboardLoadingFallback />}>
+              {showTimetable ? (
+                <div className="glass-panel p-6 rounded-3xl border border-slate-800">
+                  <TimetableView />
+                </div>
+              ) : (
+                <>
+                  {/* Render selected dashboard */}
+                  {activeRoleView === 'admin' && <AdminDashboard />}
+                  {activeRoleView === 'faculty' && <FacultyDashboard user={user} />}
+                  {activeRoleView === 'student' && (
+                    <StudentDashboard
+                      user={user}
+                      onUserUpdated={handleUserUpdated}
+                      onOpenSecurity={() => setSecurityModalOpen(true)}
+                    />
+                  )}
+                  {activeRoleView === 'hod' && <HodDashboard user={user} />}
+                </>
+              )}
+            </Suspense>
           </div>
         )}
       </main>
 
       {/* Modern SaaS Footer */}
-      <ModernFooter
-        onOpenPortal={(role) => openAuthWithMode('login', role)}
-        onToggleTimetable={() => setShowTimetable(t => !t)}
-      />
+      <ModernFooter />
 
       {/* Authentication Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        initialMode={authMode}
-        initialRole={authRole}
-        onSuccess={handleLoginSuccess}
-      />
+      {authModalOpen && (
+        <Suspense fallback={null}>
+          <AuthModal
+            isOpen={authModalOpen}
+            onClose={() => setAuthModalOpen(false)}
+            initialMode={authMode}
+            initialRole={authRole}
+            onSuccess={handleLoginSuccess}
+          />
+        </Suspense>
+      )}
 
       {/* Account Security & Email Verification Modal */}
-      <AccountSecurityModal
-        isOpen={securityModalOpen}
-        onClose={() => setSecurityModalOpen(false)}
-        user={user}
-        onUserUpdated={handleUserUpdated}
-      />
+      {securityModalOpen && (
+        <Suspense fallback={null}>
+          <AccountSecurityModal
+            isOpen={securityModalOpen}
+            onClose={() => setSecurityModalOpen(false)}
+            user={user}
+            onUserUpdated={handleUserUpdated}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

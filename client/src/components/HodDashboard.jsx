@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Crown, Users, BookOpen, AlertTriangle, CheckCircle,
   TrendingUp, Download, RefreshCw, Sparkles, Building,
   PieChart, Search, ShieldCheck, Lock, Unlock, Calendar,
   ShieldAlert, CheckCircle2, ArrowRight, Clock,
-  Eye, X, FileSpreadsheet, Printer, XCircle, Ban
+  Eye, X, FileSpreadsheet, XCircle, Ban
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { getStudentClass, matchesClassFilter } from '../utils/classUtils';
 import { cleanAvatarUrl } from '../utils/avatarUtils';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
+import { useInfiniteList } from '../hooks/useInfiniteList';
+import { InfiniteTable } from './InfiniteTable';
 import {
   Skeleton,
   SkeletonMetricCard,
@@ -27,6 +29,20 @@ export const HodDashboard = ({ user }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'locks', 'students', 'faculties', 'defaulters'
 
+  const hodStudentsQuery = useInfiniteList(
+    useCallback(
+      (params) =>
+        api.getStudents({
+          department: 'Computer Department',
+          search: searchQuery,
+          ...params,
+        }),
+      [searchQuery]
+    ),
+    { search: searchQuery },
+    { limit: 20, enabled: activeTab === 'students' }
+  );
+
   // Daily Freeze & Final Button State (Strictly System-Managed Date)
   const getTodayDate = () => {
     const now = new Date();
@@ -35,7 +51,7 @@ export const HodDashboard = ({ user }) => {
     const d = String(now.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   };
-  const [selectedDate] = useState(getTodayDate);
+  const [selectedDate, setSelectedDate] = useState(getTodayDate);
   const [lockStatus, setLockStatus] = useState(null);
   const [loadingLock, setLoadingLock] = useState(false);
   const [freezing, setFreezing] = useState(false);
@@ -48,6 +64,8 @@ export const HodDashboard = ({ user }) => {
   const [sessionRecords, setSessionRecords] = useState([]);
   const [loadingSessionRecords, setLoadingSessionRecords] = useState(false);
   const [sessionFilterStatus, setSessionFilterStatus] = useState('All'); // 'All', 'Present', 'Absent'
+  const [sessionBatchFilter, setSessionBatchFilter] = useState('All'); // 'All', 'Class A', 'Class B'
+  const [sessionSubjectFilter, setSessionSubjectFilter] = useState('All'); // 'All' or specific subject
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
   const [faceEnrollStudent, setFaceEnrollStudent] = useState(null); // { uid, name }
 
@@ -71,9 +89,12 @@ export const HodDashboard = ({ user }) => {
   const loadAllLocks = async () => {
     try {
       const locks = await api.getAllAttendanceLocks('Computer Department');
-      setAllLocks(locks || []);
+      const safeLocks = Array.isArray(locks) ? locks : [];
+      setAllLocks(safeLocks);
+      return safeLocks;
     } catch (err) {
       console.error('Failed to load all locks:', err);
+      return [];
     }
   };
 
@@ -85,8 +106,22 @@ export const HodDashboard = ({ user }) => {
     try {
       const stats = await api.getDepartmentStats('Computer Department');
       setData(stats);
-      await loadLockStatus(selectedDate);
-      await loadAllLocks();
+      const safeLocks = await loadAllLocks();
+
+      // Automatically sync latest session date so HOD sees active attendance immediately
+      const today = getTodayDate();
+      let targetDate = today;
+      if (safeLocks.length > 0) {
+        const todayLock = safeLocks.find((l) => l.date === today);
+        if (todayLock) {
+          targetDate = today;
+        } else {
+          // If no lock for today, auto-select the latest recorded session
+          targetDate = safeLocks[0].date;
+        }
+      }
+      setSelectedDate(targetDate);
+      await loadLockStatus(targetDate);
       clearTimeout(wakeupTimer);
       setIsSlowWakeup(false);
     } catch (err) {
@@ -102,6 +137,35 @@ export const HodDashboard = ({ user }) => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Live auto-polling so new sessions and attendance marks appear automatically
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      if (selectedDate) {
+        loadLockStatus(selectedDate);
+      }
+      api.getAllAttendanceLocks('Computer Department')
+        .then((locks) => {
+          if (Array.isArray(locks)) {
+            setAllLocks(locks);
+          }
+        })
+        .catch(() => {});
+    }, 4000);
+
+    return () => clearInterval(pollInterval);
+  }, [selectedDate]);
+
+  // Prevent background page scrolling & double scroll when attendance modal is open
+  useEffect(() => {
+    if (viewingSession || showConfirmModal || faceEnrollStudent) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [viewingSession, showConfirmModal, faceEnrollStudent]);
 
   const handleFreezeAttendance = async () => {
     setFreezing(true);
@@ -123,8 +187,6 @@ export const HodDashboard = ({ user }) => {
     }
   };
 
-  const [sessionBatchFilter, setSessionBatchFilter] = useState('All'); // 'All', 'Batch A', 'Batch B'
-
   const handleToggleStudentStatus = async (item) => {
     if (viewingSession?.is_frozen) {
       notify(`Attendance for ${viewingSession.date} is finalized & frozen by HOD. Edits are locked.`, 'error');
@@ -133,20 +195,32 @@ export const HodDashboard = ({ user }) => {
 
     const newStatus = item.status === 'Present' ? 'Absent' : 'Present';
     try {
-      const res = await api.updateSingleAttendanceRecord({
-        record_id: item.id,
-        student_uid: item.student_uid,
-        date: item.date,
-        subject_name: item.subject_name,
-        session_type: item.session_type,
-        status: newStatus,
-        marked_by: user?.name || 'Faculty Member'
-      });
+      // If student has multiple sessions, update all of them to stay consistent
+      const sessionsToUpdate = Array.isArray(item.allSessions) && item.allSessions.length > 0
+        ? item.allSessions
+        : [item];
 
-      notify(res.message || `Updated ${item.student_name}'s status to ${newStatus}`);
+      for (const sess of sessionsToUpdate) {
+        await api.updateSingleAttendanceRecord({
+          record_id: sess.id && !String(sess.id).startsWith('enrolled-') ? sess.id : undefined,
+          student_uid: sess.student_uid || item.student_uid,
+          date: sess.date || item.date || viewingSession?.date,
+          subject_name: sess.subject_name || item.subject_name,
+          session_type: sess.session_type || item.session_type || 'Lecture',
+          status: newStatus,
+          marked_by: user?.name || 'HOD Override'
+        });
+      }
 
-      // Update local state
-      setSessionRecords(prev => prev.map(r => r.id === item.id ? { ...r, status: newStatus, marked_by: user?.name || r.marked_by } : r));
+      notify(`Updated ${item.student_name}'s status to ${newStatus}`);
+
+      // Update local state for all records belonging to this student
+      setSessionRecords(prev =>
+        prev.map(r => (r.student_uid === item.student_uid || r.enrolment_number === item.enrolment_number)
+          ? { ...r, status: newStatus, marked_by: user?.name || r.marked_by }
+          : r
+        )
+      );
 
       // Refresh background stats
       loadData();
@@ -184,10 +258,15 @@ export const HodDashboard = ({ user }) => {
     setLoadingSessionRecords(true);
     setSessionFilterStatus('All');
     setSessionBatchFilter('All');
+    setSessionSubjectFilter('All');
     setSessionSearchQuery('');
     try {
-      const records = await api.getAttendanceRecords({ date: lock.date, department: 'Computer Department' });
-      setSessionRecords(records || []);
+      const records = await api.getAttendanceRecords({
+        date: lock.date,
+        department: 'Computer Department',
+        all: 'true'
+      });
+      setSessionRecords(Array.isArray(records) ? records : (records?.items || []));
     } catch (err) {
       console.error('Failed to load session attendance records:', err);
       notify('Failed to load session attendance records', 'error');
@@ -197,9 +276,10 @@ export const HodDashboard = ({ user }) => {
   };
 
   const exportSessionCsv = () => {
-    if (!sessionRecords || sessionRecords.length === 0) return;
-    const headers = ['Enrolment Number', 'Student Name', 'UID', 'Class', 'Subject', 'Type', 'Status', 'Faculty In-Charge', 'Marked By Method', 'Date'];
-    const rows = sessionRecords.map(r => {
+    const safeRecords = displayedFilteredRecords;
+    if (!safeRecords || safeRecords.length === 0) return;
+    const headers = ['Enrolment Number', 'Student Name', 'UID', 'Class', 'Subject(s)', 'Session Type', 'Status', 'Faculty In-Charge', 'Marked By Method', 'Date'];
+    const rows = safeRecords.map(r => {
       const batchStr = getStudentClass(r.enrolment_number, r.student_uid);
 
       return [
@@ -207,12 +287,12 @@ export const HodDashboard = ({ user }) => {
         `"${r.student_name || ''}"`,
         `"${r.student_uid || ''}"`,
         `"${batchStr}"`,
-        `"${r.subject_name || ''}"`,
+        `"${r.displaySubject || r.subject_name || ''}"`,
         `"${r.session_type || ''}"`,
         `"${r.status || ''}"`,
         `"${r.faculty_in_charge || 'C.G.Ajudiya'}"`,
         `"${r.marked_by || ''}"`,
-        `"${r.date || ''}"`
+        `"${r.date || viewingSession?.date || ''}"`
       ];
     });
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
@@ -224,14 +304,6 @@ export const HodDashboard = ({ user }) => {
     link.click();
     document.body.removeChild(link);
   };
-
-  if (loading && !data) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
 
   const { stats, faculties = [], classes = [], lowAttendanceStudents = [], allStudents = [] } = data || {
     stats: {
@@ -248,11 +320,348 @@ export const HodDashboard = ({ user }) => {
     allStudents: []
   };
 
-  const filteredStudents = allStudents.filter((s) =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.enrolment_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.uid.toLowerCase().includes(searchQuery.toLowerCase())
+  const studentList = Array.isArray(allStudents) ? allStudents : (allStudents?.items || []);
+  const filteredStudents = studentList.filter((s) =>
+    (s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.enrolment_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.uid || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const hodStudentColumns = [
+    {
+      key: 'student',
+      label: 'Student',
+      headerClassName: 'min-w-[220px]',
+      render: (s) => (
+        <div className="flex items-center gap-2.5">
+          <img
+            src={cleanAvatarUrl(s.student_photo, s.name, null, false)}
+            alt={s.name}
+            className="w-8 h-8 rounded-full object-cover bg-slate-800 shrink-0 ring-1 ring-slate-700/80"
+          />
+          <span className="font-semibold text-white text-xs whitespace-nowrap">{s.name}</span>
+        </div>
+      )
+    },
+    {
+      key: 'uid',
+      label: 'UID & Enrolment',
+      headerClassName: 'min-w-[150px] whitespace-nowrap',
+      render: (s) => (
+        <div className="font-mono text-xs leading-tight">
+          <div className="text-indigo-300 font-semibold">{s.uid}</div>
+          <div className="text-slate-400 text-[11px] mt-0.5">{s.enrolment_number}</div>
+        </div>
+      )
+    },
+    {
+      key: 'lectures',
+      label: 'Lectures',
+      headerClassName: 'min-w-[90px] whitespace-nowrap',
+      render: (s) => (
+        <span className="text-xs font-mono text-slate-300">{s.lecture_present} / {s.lecture_total}</span>
+      )
+    },
+    {
+      key: 'labs',
+      label: 'Labs',
+      headerClassName: 'min-w-[90px] whitespace-nowrap',
+      render: (s) => (
+        <span className="text-xs font-mono text-slate-300">{s.lab_present} / {s.lab_total}</span>
+      )
+    },
+    {
+      key: 'percentage',
+      label: 'Overall %',
+      headerClassName: 'min-w-[100px] whitespace-nowrap',
+      render: (s) => (
+        <span className={`font-bold font-mono text-xs ${s.percentage >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>
+          {s.percentage}%
+        </span>
+      )
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      headerClassName: 'min-w-[110px] whitespace-nowrap',
+      render: (s) => (
+        s.status === 'Detained' ? (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 inline-flex items-center gap-1 whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+            Detained (1-Yr Bar)
+          </span>
+        ) : (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            {s.status || 'Active'}
+          </span>
+        )
+      )
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      headerClassName: 'min-w-[170px] text-right whitespace-nowrap',
+      className: 'text-right',
+      render: (s) => (
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => handleToggleDetainStudent(s.uid, s.status)}
+            className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all inline-flex items-center gap-1 border cursor-pointer whitespace-nowrap ${
+              s.status === 'Detained'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+                : 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
+            }`}
+            title={s.status === 'Detained' ? 'Reinstate student' : 'Detain student'}
+            aria-label={s.status === 'Detained' ? `Reinstate ${s.name}` : `Detain ${s.name}`}
+          >
+            <Ban className="w-3 h-3" />
+            <span>{s.status === 'Detained' ? 'Reinstate' : 'Detain'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFaceEnrollStudent({ uid: s.uid, name: s.name })}
+            className="px-2 py-1 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all inline-flex items-center gap-1 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+            aria-label={`Enroll Face for ${s.name}`}
+          >
+            <span className="text-xs">📷</span>
+            <span>Enroll</span>
+          </button>
+        </div>
+      )
+    }
+  ];
+
+  const sessionRosterColumns = [
+    {
+      key: 'idx',
+      label: '#',
+      headerClassName: 'w-12 text-center',
+      className: 'text-center font-mono text-xs text-slate-500',
+      render: (item, idx) => idx + 1
+    },
+    {
+      key: 'student_name',
+      label: 'Student Name',
+      headerClassName: 'min-w-[220px]',
+      render: (item) => {
+        const avatar = cleanAvatarUrl(item.student_photo, item.student_name || 'Student', null, false);
+        const studentClass = getStudentClass(item.enrolment_number, item.student_uid);
+        return (
+          <div className="flex items-center gap-3">
+            <img
+              src={avatar}
+              alt={item.student_name}
+              className="w-8 h-8 rounded-full object-cover bg-slate-800 ring-1 ring-purple-500/30 shrink-0"
+            />
+            <div className="min-w-0">
+              <div className="font-bold text-white text-xs leading-tight whitespace-nowrap">{item.student_name}</div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[10px] text-slate-400 whitespace-nowrap">Semester 5</span>
+                <span className="text-slate-600">•</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded whitespace-nowrap ${
+                  studentClass === 'Class A' || studentClass === 'Batch A'
+                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                    : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                }`}>
+                  {studentClass}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'enrolment_uid',
+      label: 'Enrolment & UID',
+      headerClassName: 'min-w-[140px] whitespace-nowrap',
+      render: (item) => (
+        <div className="font-mono text-xs text-indigo-300">
+          <div>{item.enrolment_number}</div>
+          <div className="text-[10px] text-slate-500">{item.student_uid}</div>
+        </div>
+      )
+    },
+    {
+      key: 'subject_session',
+      label: 'Subject & Session',
+      headerClassName: 'min-w-[160px] whitespace-nowrap',
+      render: (item) => (
+        <div className="text-xs text-slate-300">
+          <div className="font-semibold text-white truncate max-w-xs">{item.displaySubject || item.subject_name}</div>
+          <span className={`inline-block px-2 py-0.2 rounded text-[10px] font-bold uppercase mt-0.5 ${
+            item.session_type === 'Lab'
+              ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+              : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+          }`}>
+            {item.session_type || 'Lecture'}
+          </span>
+        </div>
+      )
+    },
+    {
+      key: 'faculty',
+      label: 'Faculty In-Charge',
+      headerClassName: 'min-w-[150px] whitespace-nowrap',
+      render: (item) => (
+        <div className="text-xs">
+          <div className="font-bold text-purple-300">{item.faculty_in_charge || 'C.G.Ajudiya'}</div>
+          <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
+            <span className="text-slate-500">Mode:</span>
+            <span>{item.marked_by || 'RFID + Face System'}</span>
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'status',
+      label: 'Attendance Status',
+      headerClassName: 'min-w-[140px] text-right whitespace-nowrap',
+      className: 'text-right',
+      render: (item) => {
+        const isPresent = item.status === 'Present';
+        return (
+          <button
+            onClick={() => handleToggleStudentStatus(item)}
+            disabled={viewingSession?.is_frozen}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+              isPresent
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40'
+                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+            }`}
+            aria-label={`Toggle attendance status for ${item.student_name}. Currently ${item.status}`}
+            title={viewingSession?.is_frozen ? 'Session finalized and locked by HOD' : `Click to toggle status to ${isPresent ? 'Absent' : 'Present'}`}
+          >
+            {isPresent ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <XCircle className="w-3.5 h-3.5 text-rose-400" />
+            )}
+            <span>{item.status}</span>
+          </button>
+        );
+      }
+    }
+  ];
+
+  // List of distinct subjects available for the selected session date
+  const availableSubjects = useMemo(() => {
+    const safeRecords = Array.isArray(sessionRecords) ? sessionRecords : (sessionRecords?.items || []);
+    const subs = new Set();
+    safeRecords.forEach(r => {
+      if (r.subject_name) subs.add(r.subject_name);
+    });
+    return Array.from(subs);
+  }, [sessionRecords]);
+
+  // Unified unique student records for the session/date (eliminating all duplicates)
+  const uniqueSessionRecords = useMemo(() => {
+    const safeRecords = Array.isArray(sessionRecords) ? sessionRecords : (sessionRecords?.items || []);
+
+    // 1. If filtering to a specific course subject, pick those records
+    let list = safeRecords;
+    if (sessionSubjectFilter && sessionSubjectFilter !== 'All') {
+      list = safeRecords.filter(r => r.subject_name === sessionSubjectFilter);
+    }
+
+    // 2. Group strictly by unique student (student_uid or enrolment_number)
+    const studentMap = new Map();
+
+    for (const r of list) {
+      const key = r.student_uid || r.enrolment_number;
+      if (!key) continue;
+
+      if (!studentMap.has(key)) {
+        studentMap.set(key, {
+          ...r,
+          allSessions: [r],
+          allSubjects: r.subject_name ? [r.subject_name] : []
+        });
+      } else {
+        const existing = studentMap.get(key);
+        existing.allSessions.push(r);
+        if (r.subject_name && !existing.allSubjects.includes(r.subject_name)) {
+          existing.allSubjects.push(r.subject_name);
+        }
+        // If student was marked Present in any session on this date, mark as Present
+        if (r.status === 'Present') {
+          existing.status = 'Present';
+        }
+      }
+    }
+
+    // 3. Ensure all registered students in the department are represented in roster
+    const studentList = Array.isArray(allStudents) ? allStudents : (allStudents?.items || []);
+    if (studentList.length > 0 && sessionSubjectFilter === 'All') {
+      studentList.forEach(s => {
+        const key = s.uid || s.enrolment_number;
+        if (!studentMap.has(key)) {
+          const sample = safeRecords[0] || {};
+          studentMap.set(key, {
+            id: `enrolled-${s.uid}`,
+            student_uid: s.uid,
+            student_name: s.name,
+            enrolment_number: s.enrolment_number,
+            student_photo: s.student_photo,
+            department: s.department || 'Computer Department',
+            date: viewingSession?.date,
+            session_type: sample.session_type || 'Lecture',
+            subject_name: sample.subject_name || 'Class Session',
+            status: 'Absent',
+            marked_by: 'RFID + Face System',
+            faculty_in_charge: sample.faculty_in_charge || 'C.G.Ajudiya',
+            allSessions: [],
+            allSubjects: []
+          });
+        }
+      });
+    }
+
+    const uniqueList = Array.from(studentMap.values()).map(r => {
+      const subjectsCount = r.allSubjects?.length || 1;
+      let displaySubject = r.subject_name;
+      if (sessionSubjectFilter === 'All' && subjectsCount > 1) {
+        displaySubject = r.allSubjects.map(s => s.split(' - ')[0] || s).join(', ') + ` (${subjectsCount} Sessions)`;
+      }
+      return {
+        ...r,
+        displaySubject
+      };
+    });
+
+    return uniqueList.sort((a, b) =>
+      String(a.enrolment_number || '').localeCompare(String(b.enrolment_number || ''), undefined, { numeric: true })
+    );
+  }, [sessionRecords, sessionSubjectFilter, allStudents, viewingSession]);
+
+  // Filtered unique records by status, batch class, and search query
+  const displayedFilteredRecords = useMemo(() => {
+    return uniqueSessionRecords.filter((r) => {
+      const matchesStatus = sessionFilterStatus === 'All' || r.status === sessionFilterStatus;
+      const rClass = getStudentClass(r.enrolment_number, r.student_uid);
+      const matchesBatch = matchesClassFilter(rClass, sessionBatchFilter);
+
+      const q = sessionSearchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        (r.student_name || '').toLowerCase().includes(q) ||
+        (r.enrolment_number || '').toLowerCase().includes(q) ||
+        (r.student_uid || '').toLowerCase().includes(q) ||
+        (r.displaySubject || '').toLowerCase().includes(q);
+
+      return matchesStatus && matchesBatch && matchesSearch;
+    });
+  }, [uniqueSessionRecords, sessionFilterStatus, sessionBatchFilter, sessionSearchQuery]);
+
+  if (loading && !data) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -435,11 +844,16 @@ export const HodDashboard = ({ user }) => {
 
       {/* OFFICIAL SESSION ATTENDANCE ROSTER MODAL (HOD VIEW FOR SEALED & ACTIVE DATES) */}
       {viewingSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
-          <div className="max-w-5xl w-full max-h-[92vh] flex flex-col glass-panel rounded-3xl border border-purple-500/40 bg-slate-900 shadow-2xl overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-hidden overscroll-contain"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setViewingSession(null);
+          }}
+        >
+          <div className="max-w-5xl w-full max-h-[90vh] flex flex-col glass-panel rounded-3xl border border-purple-500/40 bg-slate-900 shadow-2xl overflow-hidden my-auto">
             
             {/* Modal Header */}
-            <div className="p-5 sm:p-6 border-b border-purple-500/20 bg-gradient-to-r from-slate-950 via-purple-950/30 to-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="p-5 sm:p-6 border-b border-purple-500/20 bg-gradient-to-r from-slate-950 via-purple-950/30 to-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
               <div className="flex items-start sm:items-center gap-3.5">
                 <div className={`p-3 rounded-2xl border ${viewingSession.is_frozen ? 'bg-purple-500/20 border-purple-500/40 text-purple-400' : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'}`}>
                   {viewingSession.is_frozen ? <Lock className="w-6 h-6" /> : <Unlock className="w-6 h-6" />}
@@ -475,19 +889,12 @@ export const HodDashboard = ({ user }) => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={exportSessionCsv}
-                  disabled={sessionRecords.length === 0}
+                  disabled={displayedFilteredRecords.length === 0}
                   className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
                   title="Download Official CSV Attendance Sheet"
                 >
                   <Download className="w-3.5 h-3.5 text-purple-400" />
                   <span className="hidden sm:inline">Export CSV</span>
-                </button>
-                <button
-                  onClick={() => window.print()}
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
-                  title="Print Official Attendance Roster"
-                >
-                  <Printer className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setViewingSession(null)}
@@ -501,16 +908,18 @@ export const HodDashboard = ({ user }) => {
 
             {/* Quick Metrics Bar on this Session */}
             {(() => {
-              const total = sessionRecords.length;
-              const presentCount = sessionRecords.filter(r => r.status === 'Present').length;
+              const total = uniqueSessionRecords.length;
+              const presentCount = uniqueSessionRecords.filter(r => r.status === 'Present').length;
               const absentCount = total - presentCount;
               const pct = total > 0 ? Number(((presentCount / total) * 100).toFixed(1)) : 0;
-              const sessionType = sessionRecords[0]?.session_type || 'Lecture';
-              const markedBy = sessionRecords[0]?.marked_by || 'RFID + Face System';
-              const facultyInCharge = sessionRecords[0]?.faculty_in_charge || 'C.G.Ajudiya';
+              const sessionType = uniqueSessionRecords[0]?.session_type || 'Lecture';
+              const markedBy = uniqueSessionRecords[0]?.marked_by || 'RFID + Face System';
+              const facultyInCharge = sessionSubjectFilter !== 'All'
+                ? (uniqueSessionRecords[0]?.faculty_in_charge || 'Faculty In-Charge')
+                : (availableSubjects.length > 1 ? 'Department Faculties' : (uniqueSessionRecords[0]?.faculty_in_charge || 'C.G.Ajudiya'));
 
               return (
-                <div className="p-4 bg-slate-950/60 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="p-4 bg-slate-950/60 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
                     <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800">
                       <span className="text-[10px] font-bold uppercase text-slate-400 block">Total Students</span>
@@ -527,9 +936,9 @@ export const HodDashboard = ({ user }) => {
                     <div className="p-3 rounded-2xl bg-purple-950/30 border border-purple-500/30">
                       <span className="text-[10px] font-bold uppercase text-purple-300 block">Session Mode & Faculty</span>
                       <span className="text-xs font-bold text-white truncate block mt-1">
-                        {sessionType} • {markedBy}
+                        {sessionSubjectFilter !== 'All' ? sessionType : (availableSubjects.length > 1 ? `${availableSubjects.length} Sessions` : sessionType)} • {markedBy}
                       </span>
-                      <span className="text-[10px] text-purple-300 font-semibold block">
+                      <span className="text-[10px] text-purple-300 font-semibold block truncate">
                         Faculty: {facultyInCharge}
                       </span>
                     </div>
@@ -539,14 +948,14 @@ export const HodDashboard = ({ user }) => {
             })()}
 
             {/* Filter & Search Bar */}
-            <div className="p-4 border-b border-slate-800 bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="p-4 border-b border-slate-800 bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
               <div className="flex flex-wrap items-center gap-2">
                 {/* Status Filter Tabs */}
                 <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 w-fit">
                   {['All', 'Present', 'Absent'].map((st) => {
                     const count = st === 'All'
-                      ? sessionRecords.length
-                      : sessionRecords.filter(r => r.status === st).length;
+                      ? uniqueSessionRecords.length
+                      : uniqueSessionRecords.filter(r => r.status === st).length;
                     return (
                       <button
                         key={st}
@@ -586,6 +995,26 @@ export const HodDashboard = ({ user }) => {
                     </button>
                   ))}
                 </div>
+
+                {/* Course Subject Filter (if multiple subjects exist on this date) */}
+                {availableSubjects.length > 1 && (
+                  <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-xl border border-slate-800">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">Course:</span>
+                    <select
+                      value={sessionSubjectFilter}
+                      onChange={(e) => setSessionSubjectFilter(e.target.value)}
+                      aria-label="Filter roster by course"
+                      className="bg-slate-900 text-purple-300 text-xs font-semibold py-0.5 px-2 rounded-lg border border-purple-500/30 focus:outline-none cursor-pointer max-w-[180px] truncate"
+                    >
+                      <option value="All">All Courses (Unique Students)</option>
+                      {availableSubjects.map((sub) => (
+                        <option key={sub} value={sub}>
+                          {sub}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="relative w-full sm:w-72">
@@ -601,132 +1030,30 @@ export const HodDashboard = ({ user }) => {
             </div>
 
             {/* Students Attendance Table Body */}
-            <div className="overflow-y-auto flex-1 p-2 sm:p-4">
+            <div className="overflow-y-auto flex-1 min-h-0 p-2 sm:p-4 overscroll-contain">
               {loadingSessionRecords ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-3">
                   <RefreshCw className="w-7 h-7 text-purple-400 animate-spin" />
                   <span className="text-xs text-slate-400 font-semibold">Loading official student attendance sheet...</span>
                 </div>
-              ) : (() => {
-                const filtered = sessionRecords.filter((r) => {
-                  const matchesStatus = sessionFilterStatus === 'All' || r.status === sessionFilterStatus;
-                  const rClass = getStudentClass(r.enrolment_number, r.student_uid);
-                  const matchesBatch = matchesClassFilter(rClass, sessionBatchFilter);
-
-                  const q = sessionSearchQuery.toLowerCase();
-                  const matchesSearch =
-                    (r.student_name || '').toLowerCase().includes(q) ||
-                    (r.enrolment_number || '').toLowerCase().includes(q) ||
-                    (r.student_uid || '').toLowerCase().includes(q);
-                  return matchesStatus && matchesBatch && matchesSearch;
-                });
-
-                if (filtered.length === 0) {
-                  return (
-                    <div className="py-16 text-center text-slate-500 text-xs">
-                      No student records found matching the current filters.
-                    </div>
-                  );
-                }
-
-                return (
-                  <table className="w-full min-w-[750px] text-left text-sm text-slate-300">
-                    <thead className="bg-slate-950/80 text-[11px] uppercase font-bold text-slate-400 border-b border-slate-800 sticky top-0 backdrop-blur-sm z-10">
-                      <tr>
-                        <th className="px-4 py-3 w-12 text-center">#</th>
-                        <th className="px-4 py-3 min-w-[200px]">Student Name</th>
-                        <th className="px-4 py-3 whitespace-nowrap">Enrolment & UID</th>
-                        <th className="px-4 py-3 whitespace-nowrap">Subject & Session</th>
-                        <th className="px-4 py-3 whitespace-nowrap">Faculty In-Charge</th>
-                        <th className="px-4 py-3 text-right whitespace-nowrap">Attendance Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60">
-                      {filtered.map((item, idx) => {
-                        const isPresent = item.status === 'Present';
-                        const avatar = cleanAvatarUrl(item.student_photo, item.student_name || 'Student', null, false);
-                        const studentClass = getStudentClass(item.enrolment_number, item.student_uid);
-                        const facultyName = item.faculty_in_charge || 'C.G.Ajudiya';
-
-                        return (
-                          <tr key={item.id || idx} className="hover:bg-slate-800/40 transition-colors">
-                            <td className="px-4 py-3 text-center text-xs text-slate-500 font-mono">
-                              {idx + 1}
-                            </td>
-                            <td className="px-4 py-3 min-w-[200px]">
-                              <div className="flex items-center gap-3">
-                                <img
-                                  src={avatar}
-                                  alt={item.student_name}
-                                  className="w-8 h-8 rounded-full object-cover bg-slate-800 ring-1 ring-purple-500/30 shrink-0"
-                                />
-                                <div className="min-w-0">
-                                  <div className="font-bold text-white text-xs leading-tight whitespace-nowrap">{item.student_name}</div>
-                                  <div className="flex items-center gap-1.5 mt-0.5">
-                                    <span className="text-[10px] text-slate-400 whitespace-nowrap">Semester 5</span>
-                                    <span className="text-slate-600">•</span>
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded whitespace-nowrap ${
-                                      studentClass === 'Class A' || studentClass === 'Batch A'
-                                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                        : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                                    }`}>
-                                      {studentClass}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 font-mono text-xs text-indigo-300">
-                              <div>{item.enrolment_number}</div>
-                              <div className="text-[10px] text-slate-500">{item.student_uid}</div>
-                            </td>
-                            <td className="px-4 py-3 text-xs text-slate-300">
-                              <div className="font-semibold text-white truncate max-w-xs">{item.subject_name}</div>
-                              <span className={`inline-block px-2 py-0.2 rounded text-[10px] font-bold uppercase mt-0.5 ${
-                                item.session_type === 'Lab'
-                                  ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
-                                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                              }`}>
-                                {item.session_type}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-xs">
-                              <div className="font-bold text-purple-300">{facultyName}</div>
-                              <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
-                                <span className="text-slate-500">Mode:</span>
-                                <span>{item.marked_by}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                onClick={() => handleToggleStudentStatus(item)}
-                                disabled={viewingSession?.is_frozen}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 ${
-                                  isPresent
-                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40'
-                                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-                                }`}
-                                title={viewingSession?.is_frozen ? 'Session finalized and locked by HOD' : `Click to toggle status to ${isPresent ? 'Absent' : 'Present'}`}
-                              >
-                                {isPresent ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                ) : (
-                                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                                )}
-                                <span>{item.status}</span>
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                );
-              })()}
+              ) : displayedFilteredRecords.length === 0 ? (
+                <div className="py-16 text-center text-slate-500 text-xs">
+                  No student records found matching the current filters.
+                </div>
+              ) : (
+                <div className="p-1">
+                  <InfiniteTable
+                    columns={sessionRosterColumns}
+                    items={displayedFilteredRecords}
+                    tableAriaLabel="Sealed session attendance roster"
+                    itemCountLabel={`Showing ${displayedFilteredRecords.length} unique students`}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+            <div className="p-4 border-t border-slate-800 bg-slate-950/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400 shrink-0">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0" />
                 <span>
@@ -817,19 +1144,37 @@ export const HodDashboard = ({ user }) => {
                 </p>
               </div>
 
-              {/* Strict Active Date (Read-Only to prevent breaking attendance sequence) */}
+              {/* Active Session Date Selector */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
                 <div>
                   <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Strict Active Session Date
+                    Active Session Date
                   </span>
                   <div className="flex items-center gap-2 bg-slate-900 px-3.5 py-1.5 rounded-xl border border-purple-500/30">
                     <Calendar className="w-3.5 h-3.5 text-purple-400" />
-                    <span className="text-white text-xs font-mono font-black tracking-wider">
-                      {selectedDate}
-                    </span>
+                    {allLocks.length > 0 ? (
+                      <select
+                        value={selectedDate}
+                        onChange={(e) => {
+                          const newD = e.target.value;
+                          setSelectedDate(newD);
+                          loadLockStatus(newD);
+                        }}
+                        className="bg-transparent text-white text-xs font-mono font-black tracking-wider focus:outline-none cursor-pointer border-none"
+                      >
+                        {allLocks.map((l) => (
+                          <option key={l.id || l.date} value={l.date} className="bg-slate-900 text-white font-mono">
+                            {l.date} {l.is_frozen ? '(Frozen)' : '(Active)'}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-white text-xs font-mono font-black tracking-wider">
+                        {selectedDate}
+                      </span>
+                    )}
                     <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      System Managed
+                      {lockStatus?.is_frozen ? 'Frozen' : 'Active'}
                     </span>
                   </div>
                 </div>
@@ -860,7 +1205,7 @@ export const HodDashboard = ({ user }) => {
               <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80">
                 <span className="text-[11px] font-semibold text-slate-400 uppercase">Records on Date</span>
                 <div className="text-2xl font-black text-white mt-1">
-                  {lockStatus?.summary?.total_records || 0}
+                  {lockStatus?.summary?.total_students || lockStatus?.summary?.total_records || 0}
                 </div>
                 <div className="text-[10px] text-slate-500 mt-0.5">Students logged</div>
               </div>
@@ -919,20 +1264,18 @@ export const HodDashboard = ({ user }) => {
                     className="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-xl shadow-purple-600/30 transition-all cursor-pointer"
                   >
                     <Eye className="w-4 h-4" />
-                    <span>View Attendance ({lockStatus?.summary?.total_records || 'All Students'})</span>
+                    <span>View Attendance ({lockStatus?.summary?.total_students || lockStatus?.summary?.total_records || 'All Students'})</span>
                   </button>
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
-                  {(lockStatus?.summary?.total_records || 0) > 0 && (
-                    <button
-                      onClick={() => handleOpenSessionRoster({ date: selectedDate, is_frozen: 0, finalized_by: null, finalized_at: null, next_session_date: lockStatus.next_session_date })}
-                      className="px-5 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs sm:text-sm flex items-center gap-2 border border-slate-700 shadow-md transition-all cursor-pointer"
-                    >
-                      <Eye className="w-4 h-4 text-purple-400" />
-                      <span>View Current Session ({lockStatus?.summary?.total_records})</span>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleOpenSessionRoster({ date: selectedDate, is_frozen: 0, finalized_by: null, finalized_at: null, next_session_date: lockStatus?.next_session_date })}
+                    className="px-5 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs sm:text-sm flex items-center gap-2 border border-slate-700 shadow-md transition-all cursor-pointer"
+                  >
+                    <Eye className="w-4 h-4 text-purple-400" />
+                    <span>View Attendance ({lockStatus?.summary?.total_students || lockStatus?.summary?.total_records || 0})</span>
+                  </button>
                   <button
                     onClick={() => setShowConfirmModal(true)}
                     className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-sm shadow-xl shadow-purple-600/30 flex items-center gap-3 transform hover:-translate-y-0.5 transition-all cursor-pointer"
@@ -1161,119 +1504,21 @@ export const HodDashboard = ({ user }) => {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[750px] text-left text-sm text-slate-300">
-              <thead className="bg-slate-900/90 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800">
-                <tr>
-                  <th className="px-6 py-3.5 min-w-[200px]">Student</th>
-                  <th className="px-6 py-3.5 whitespace-nowrap">UID & Enrolment</th>
-                  <th className="px-6 py-3.5 whitespace-nowrap">Lectures</th>
-                  <th className="px-6 py-3.5 whitespace-nowrap">Labs</th>
-                  <th className="px-6 py-3.5 whitespace-nowrap">Overall %</th>
-                  <th className="px-6 py-3.5 whitespace-nowrap">Status</th>
-                  <th className="px-6 py-3.5 text-right whitespace-nowrap">Face AI</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {loading ? (
-                  <>
-                    <SkeletonTableRow columns={7} />
-                    <SkeletonTableRow columns={7} />
-                    <SkeletonTableRow columns={7} />
-                    <SkeletonTableRow columns={7} />
-                    <SkeletonTableRow columns={7} />
-                  </>
-                ) : filteredStudents.length === 0 ? (
-                  <tr>
-                    <td colSpan="7">
-                      <EmptyState
-                        icon={Users}
-                        title="No students found matching filters"
-                        description={
-                          searchQuery
-                            ? `No students match "${searchQuery}".`
-                            : "No students currently registered in this department."
-                        }
-                        actionLabel={searchQuery ? "Clear Search" : undefined}
-                        onAction={searchQuery ? () => setSearchQuery('') : undefined}
-                      />
-                    </td>
-                  </tr>
-                ) : (
-                  filteredStudents.map((s) => (
-                    <tr key={s.uid} className="hover:bg-slate-900/40 transition-colors fade-in-content">
-                    <td className="px-6 py-4 min-w-[200px]">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={cleanAvatarUrl(s.student_photo, s.name, null, false)}
-                          alt={s.name}
-                          className="w-9 h-9 rounded-full object-cover bg-slate-800 shrink-0"
-                        />
-                        <span className="font-semibold text-white whitespace-nowrap">{s.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-xs text-indigo-300">
-                      <div>{s.uid}</div>
-                      <div className="text-slate-400 text-[11px]">{s.enrolment_number}</div>
-                    </td>
-                    <td className="px-6 py-4 text-xs text-slate-300">
-                      {s.lecture_present} / {s.lecture_total}
-                    </td>
-                    <td className="px-6 py-4 text-xs text-slate-300">
-                      {s.lab_present} / {s.lab_total}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`font-bold ${s.percentage >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        {s.percentage}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {s.status === 'Detained' ? (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 w-fit">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                          Detained (1-Yr Bar)
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                          {s.status || 'Active'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleDetainStudent(s.uid, s.status)}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1 border cursor-pointer ${
-                            s.status === 'Detained'
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-                              : 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
-                          }`}
-                          title={
-                            s.status === 'Detained'
-                              ? 'Reinstate student (revoke detention)'
-                              : 'Detain student for 1 academic year (bar from exams & attendance)'
-                          }
-                        >
-                          <Ban className="w-3.5 h-3.5" />
-                          <span>{s.status === 'Detained' ? 'Reinstate' : 'Detain'}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setFaceEnrollStudent({ uid: s.uid, name: s.name })}
-                          className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-                          title={`Enroll Face for ${s.name} (${s.uid})`}
-                        >
-                          <span className="text-sm">📷</span>
-                          <span>Enroll</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )))}
-              </tbody>
-            </table>
+          <div className="p-4 sm:p-6">
+            <InfiniteTable
+              columns={hodStudentColumns}
+              items={hodStudentsQuery.items.length > 0 ? hodStudentsQuery.items : (hodStudentsQuery.isInitialLoading ? [] : filteredStudents)}
+              loading={hodStudentsQuery.isInitialLoading}
+              loadingMore={hodStudentsQuery.isLoadingMore}
+              error={hodStudentsQuery.error}
+              hasMore={hodStudentsQuery.hasMore}
+              sentinelRef={hodStudentsQuery.sentinelRef}
+              onRetry={hodStudentsQuery.refresh}
+              emptyMessage={searchQuery ? `No students match "${searchQuery}".` : "No students currently registered in this department."}
+              tableAriaLabel="Department student enrollment and attendance table"
+              minWidth="980px"
+              itemCountLabel={`Showing ${hodStudentsQuery.items.length > 0 ? hodStudentsQuery.items.length : filteredStudents.length} of ${hodStudentsQuery.total || (hodStudentsQuery.items.length > 0 ? hodStudentsQuery.items.length : filteredStudents.length)} students`}
+            />
           </div>
         </div>
       )}
@@ -1365,7 +1610,13 @@ export const HodDashboard = ({ user }) => {
           onClose={() => setFaceEnrollStudent(null)}
           uid={faceEnrollStudent.uid}
           studentName={faceEnrollStudent.name}
-          onComplete={(count) => notify(`Enrolled ${count} face photos for ${faceEnrollStudent.name}`)}
+          onComplete={(count) => {
+            notify(`Enrolled ${count} face photo(s) for ${faceEnrollStudent.name} & replaced avatar!`);
+            loadData();
+            if (hodStudentsQuery && hodStudentsQuery.refresh) {
+              hodStudentsQuery.refresh();
+            }
+          }}
         />
       )}
     </div>

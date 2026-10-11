@@ -16,6 +16,8 @@ server/.env.local
 # SQLite Database files (Local attendance data)
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 server/attendancex.db
 
 # Build outputs

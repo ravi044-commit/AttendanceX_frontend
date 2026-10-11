@@ -40,16 +40,16 @@ export const WorkflowSection = () => {
   return (
     <section id="workflow" className="relative z-10 py-16" aria-label="How AttendanceX Works">
       <div className="text-center max-w-3xl mx-auto mb-14 space-y-4">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs font-semibold uppercase tracking-wider">
-          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-600 dark:text-indigo-300 text-xs font-semibold uppercase tracking-wider">
+          <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
           <span>Streamlined Academic Pipeline</span>
         </div>
 
-        <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-white leading-tight">
+        <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
           How AttendanceX Works in 4 Simple Steps
         </h2>
 
-        <p className="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto leading-relaxed">
+        <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
           Engineered for minimal friction in lecture halls and practical labs, backed by deterministic database verification.
         </p>
       </div>
@@ -60,11 +60,11 @@ export const WorkflowSection = () => {
           return (
             <div
               key={s.step}
-              className="relative group glass-card p-6 rounded-2xl border border-slate-800/80 bg-slate-900/50 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:border-slate-700 hover:shadow-2xl flex flex-col justify-between"
+              className="relative group glass-card p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/50 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:border-indigo-400/50 dark:hover:border-slate-700 hover:shadow-xl dark:hover:shadow-2xl flex flex-col justify-between"
             >
               {/* Connector line for large screens */}
               {idx < STEPS.length - 1 && (
-                <div className="hidden lg:block absolute top-12 -right-3 w-6 h-[1.5px] bg-gradient-to-r from-slate-700 to-transparent z-20 pointer-events-none" />
+                <div className="hidden lg:block absolute top-12 -right-3 w-6 h-[1.5px] bg-gradient-to-r from-slate-300 dark:from-slate-700 to-transparent z-20 pointer-events-none" />
               )}
 
               <div>
@@ -72,28 +72,28 @@ export const WorkflowSection = () => {
                   <div
                     className={`w-12 h-12 rounded-xl bg-gradient-to-tr ${s.color} p-0.5 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform`}
                   >
-                    <div className="w-full h-full bg-slate-950/80 rounded-[10px] flex items-center justify-center">
-                      <Icon className="w-6 h-6 text-white" />
+                    <div className="w-full h-full bg-white dark:bg-slate-950/80 rounded-[10px] flex items-center justify-center">
+                      <Icon className="w-6 h-6 text-slate-800 dark:text-white" />
                     </div>
                   </div>
 
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-indigo-300 border border-slate-700">
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 border border-slate-200 dark:border-slate-700">
                     {s.step}
                   </span>
                 </div>
 
-                <h3 className="text-lg font-bold text-white group-hover:text-indigo-300 transition-colors">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
                   {s.title}
                 </h3>
 
-                <p className="text-xs sm:text-sm text-slate-400 mt-2.5 leading-relaxed">
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-2.5 leading-relaxed">
                   {s.desc}
                 </p>
               </div>
 
-              <div className="mt-6 pt-3 border-t border-slate-800/60 flex items-center text-[11px] font-semibold text-slate-400 group-hover:text-indigo-300">
+              <div className="mt-6 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex items-center text-[11px] font-semibold text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">
                 <span>Phase {s.step} verification</span>
-                <ArrowRight className="w-3.5 h-3.5 ml-auto text-slate-500 group-hover:translate-x-1 transition-transform" />
+                <ArrowRight className="w-3.5 h-3.5 ml-auto text-slate-400 dark:text-slate-500 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
           );

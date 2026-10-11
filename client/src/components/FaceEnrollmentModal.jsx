@@ -177,11 +177,12 @@ export const FaceEnrollmentModal = ({
         setPhotoCount(newCount);
         setRecentPhotos((prev) => [jpegDataUrl, ...prev.slice(0, 5)]);
 
-        setSuccessToast(`Photo #${newCount} saved!`);
+        const photoUrl = response.photoUrl || `/api/face/photo/${uid}?t=${Date.now()}`;
+        setSuccessToast(`Photo #${newCount} saved! Avatar updated.`);
         setTimeout(() => setSuccessToast(''), 2500);
 
         if (onComplete) {
-          onComplete(newCount);
+          onComplete(newCount, photoUrl);
         }
       } else {
         throw new Error(response?.error || 'Server could not save image');
@@ -200,6 +201,9 @@ export const FaceEnrollmentModal = ({
   // Done button handler: stops camera and closes modal
   const handleDone = () => {
     stopCamera();
+    if (onComplete && photoCount > 0) {
+      onComplete(photoCount, `/api/face/photo/${uid}?t=${Date.now()}`);
+    }
     onClose();
   };
 
