@@ -55,8 +55,10 @@ export const HodDashboard = ({ user }) => {
   const [lockStatus, setLockStatus] = useState(null);
   const [loadingLock, setLoadingLock] = useState(false);
   const [freezing, setFreezing] = useState(false);
+  const [freezingDate, setFreezingDate] = useState(null); // which date is being quick-frozen
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [allLocks, setAllLocks] = useState([]);
+  const [pendingDates, setPendingDates] = useState([]); // unfrozen past dates with attendance
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
 
   // View Sealed/Active Session Attendance Roster Modal State
@@ -74,15 +76,15 @@ export const HodDashboard = ({ user }) => {
     setTimeout(() => setNotification({ show: false, message: '', type: 'success' }), 5000);
   };
 
-  const loadLockStatus = async (date) => {
-    setLoadingLock(true);
+  const loadLockStatus = async (date, silent = false) => {
+    if (!silent) setLoadingLock(true);
     try {
       const res = await api.getAttendanceLockStatus(date, 'Computer Department');
       setLockStatus(res);
     } catch (err) {
       console.error('Failed to load lock status:', err);
     } finally {
-      setLoadingLock(false);
+      if (!silent) setLoadingLock(false);
     }
   };
 
@@ -91,6 +93,31 @@ export const HodDashboard = ({ user }) => {
       const locks = await api.getAllAttendanceLocks('Computer Department');
       const safeLocks = Array.isArray(locks) ? locks : [];
       setAllLocks(safeLocks);
+
+      // Detect unfrozen sessions that have recorded attendance (both past overdue & current)
+      const unfrozen = safeLocks.filter((l) => !l.is_frozen);
+      let unfrozenWithRecords = [];
+
+      if (unfrozen.length > 0) {
+        if (unfrozen.some((l) => typeof l.total_records !== 'undefined')) {
+          unfrozenWithRecords = unfrozen.filter((l) => (l.total_records || 0) > 0);
+        } else {
+          const verified = await Promise.all(
+            unfrozen.map(async (l) => {
+              try {
+                const s = await api.getAttendanceLockStatus(l.date, 'Computer Department');
+                const recs = s?.summary?.total_records || 0;
+                return recs > 0 ? { ...l, total_records: recs, present_count: s?.summary?.present_count || 0 } : null;
+              } catch {
+                return null;
+              }
+            })
+          );
+          unfrozenWithRecords = verified.filter(Boolean);
+        }
+      }
+      setPendingDates(unfrozenWithRecords);
+
       return safeLocks;
     } catch (err) {
       console.error('Failed to load all locks:', err);
@@ -108,20 +135,10 @@ export const HodDashboard = ({ user }) => {
       setData(stats);
       const safeLocks = await loadAllLocks();
 
-      // Automatically sync latest session date so HOD sees active attendance immediately
+      // Always sync active session date to real-time today
       const today = getTodayDate();
-      let targetDate = today;
-      if (safeLocks.length > 0) {
-        const todayLock = safeLocks.find((l) => l.date === today);
-        if (todayLock) {
-          targetDate = today;
-        } else {
-          // If no lock for today, auto-select the latest recorded session
-          targetDate = safeLocks[0].date;
-        }
-      }
-      setSelectedDate(targetDate);
-      await loadLockStatus(targetDate);
+      setSelectedDate(today);
+      await loadLockStatus(today);
       clearTimeout(wakeupTimer);
       setIsSlowWakeup(false);
     } catch (err) {
@@ -138,19 +155,13 @@ export const HodDashboard = ({ user }) => {
     loadData();
   }, []);
 
-  // Live auto-polling so new sessions and attendance marks appear automatically
+  // Live auto-polling so new sessions and attendance marks appear automatically with no flicker
   useEffect(() => {
     const pollInterval = setInterval(() => {
       if (selectedDate) {
-        loadLockStatus(selectedDate);
+        loadLockStatus(selectedDate, true); // silent = no loading state flicker
       }
-      api.getAllAttendanceLocks('Computer Department')
-        .then((locks) => {
-          if (Array.isArray(locks)) {
-            setAllLocks(locks);
-          }
-        })
-        .catch(() => {});
+      loadAllLocks(); // silently updates both allLocks and pendingDates
     }, 4000);
 
     return () => clearInterval(pollInterval);
@@ -176,14 +187,55 @@ export const HodDashboard = ({ user }) => {
         department: 'Computer Department',
         finalized_by: hodName
       });
-      notify(res.message || `Attendance for ${selectedDate} finalized and frozen successfully! Next morning session ready.`, 'success');
+      const nextDate = res.next_session_date;
+      notify(res.message || `Attendance for ${selectedDate} finalized! Next session (${nextDate || 'tomorrow'}) is active.`, 'success');
       setShowConfirmModal(false);
-      await loadLockStatus(selectedDate);
-      await loadAllLocks();
+
+      // Refresh locks to update list and pendingDates
+      const updatedLocks = await loadAllLocks();
+
+      // Keep active session anchored on current real-time session
+      const today = getTodayDate();
+      setSelectedDate(today);
+      await loadLockStatus(today);
+
+      // Refresh department metrics in background
+      api.getDepartmentStats('Computer Department').then(setData).catch(() => {});
     } catch (err) {
       notify(err.message || 'Failed to finalize attendance', 'error');
     } finally {
       setFreezing(false);
+    }
+  };
+
+  // Quick-freeze a specific overdue/unfrozen date directly from the Quick Freeze banner
+  const handleQuickFreeze = async (date) => {
+    if (!window.confirm(`Finalize & freeze attendance for ${date}?\n\nThis will permanently lock records and immediately trigger the next day's active session without delay.`)) return;
+    setFreezingDate(date);
+    try {
+      const hodName = user?.name || 'HOD C.G.Ajudiya';
+      const res = await api.freezeAttendance({
+        date,
+        department: 'Computer Department',
+        finalized_by: hodName
+      });
+      const nextDate = res.next_session_date;
+      notify(res.message || `Attendance for ${date} finalized! Active session advanced to ${nextDate || 'next day'}.`, 'success');
+
+      // Refresh locks list and pendingDates immediately
+      const updatedLocks = await loadAllLocks();
+
+      // Keep active session anchored on current real-time session
+      const today = getTodayDate();
+      setSelectedDate(today);
+      await loadLockStatus(today);
+
+      // Refresh department telemetry in background
+      api.getDepartmentStats('Computer Department').then(setData).catch(() => {});
+    } catch (err) {
+      notify(err.message || `Failed to finalize ${date}`, 'error');
+    } finally {
+      setFreezingDate(null);
     }
   };
 
@@ -374,11 +426,14 @@ export const HodDashboard = ({ user }) => {
       key: 'percentage',
       label: 'Overall %',
       headerClassName: 'min-w-[100px] whitespace-nowrap',
-      render: (s) => (
-        <span className={`font-bold font-mono text-xs ${s.percentage >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>
-          {s.percentage}%
-        </span>
-      )
+      render: (s) => {
+        const displayPct = s.percentage !== undefined && s.percentage !== null ? Math.min(s.percentage, 95) : 0;
+        return (
+          <span className={`font-bold font-mono text-xs ${displayPct >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {displayPct}%
+          </span>
+        );
+      }
     },
     {
       key: 'status',
@@ -393,7 +448,7 @@ export const HodDashboard = ({ user }) => {
         ) : (
           <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            {s.status || 'Active'}
+            Active
           </span>
         )
       )
@@ -408,11 +463,10 @@ export const HodDashboard = ({ user }) => {
           <button
             type="button"
             onClick={() => handleToggleDetainStudent(s.uid, s.status)}
-            className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all inline-flex items-center gap-1 border cursor-pointer whitespace-nowrap ${
-              s.status === 'Detained'
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-                : 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
-            }`}
+            className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all inline-flex items-center gap-1 border cursor-pointer whitespace-nowrap ${s.status === 'Detained'
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+              : 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
+              }`}
             title={s.status === 'Detained' ? 'Reinstate student' : 'Detain student'}
             aria-label={s.status === 'Detained' ? `Reinstate ${s.name}` : `Detain ${s.name}`}
           >
@@ -460,11 +514,10 @@ export const HodDashboard = ({ user }) => {
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-[10px] text-slate-400 whitespace-nowrap">Semester 5</span>
                 <span className="text-slate-600">•</span>
-                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded whitespace-nowrap ${
-                  studentClass === 'Class A' || studentClass === 'Batch A'
-                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                    : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                }`}>
+                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded whitespace-nowrap ${studentClass === 'Class A' || studentClass === 'Batch A'
+                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                  : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                  }`}>
                   {studentClass}
                 </span>
               </div>
@@ -491,11 +544,10 @@ export const HodDashboard = ({ user }) => {
       render: (item) => (
         <div className="text-xs text-slate-300">
           <div className="font-semibold text-white truncate max-w-xs">{item.displaySubject || item.subject_name}</div>
-          <span className={`inline-block px-2 py-0.2 rounded text-[10px] font-bold uppercase mt-0.5 ${
-            item.session_type === 'Lab'
-              ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
-              : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-          }`}>
+          <span className={`inline-block px-2 py-0.2 rounded text-[10px] font-bold uppercase mt-0.5 ${item.session_type === 'Lab'
+            ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+            : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+            }`}>
             {item.session_type || 'Lecture'}
           </span>
         </div>
@@ -526,11 +578,10 @@ export const HodDashboard = ({ user }) => {
           <button
             onClick={() => handleToggleStudentStatus(item)}
             disabled={viewingSession?.is_frozen}
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 ${
-              isPresent
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40'
-                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-            }`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 ${isPresent
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40'
+              : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+              }`}
             aria-label={`Toggle attendance status for ${item.student_name}. Currently ${item.status}`}
             title={viewingSession?.is_frozen ? 'Session finalized and locked by HOD' : `Click to toggle status to ${isPresent ? 'Absent' : 'Present'}`}
           >
@@ -764,11 +815,10 @@ export const HodDashboard = ({ user }) => {
       {/* TOAST NOTIFICATION */}
       {notification.show && (
         <div
-          className={`fixed bottom-6 right-6 z-50 px-5 py-3.5 rounded-2xl border shadow-2xl flex items-center gap-3 backdrop-blur-xl transition-all ${
-            notification.type === 'error'
-              ? 'bg-rose-950/90 border-rose-800 text-rose-200'
-              : 'bg-emerald-950/90 border-emerald-800 text-emerald-200'
-          }`}
+          className={`fixed bottom-6 right-6 z-50 px-5 py-3.5 rounded-2xl border shadow-2xl flex items-center gap-3 backdrop-blur-xl transition-all ${notification.type === 'error'
+            ? 'bg-rose-950/90 border-rose-800 text-rose-200'
+            : 'bg-emerald-950/90 border-emerald-800 text-emerald-200'
+            }`}
         >
           {notification.type === 'error' ? (
             <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
@@ -851,7 +901,7 @@ export const HodDashboard = ({ user }) => {
           }}
         >
           <div className="max-w-5xl w-full max-h-[90vh] flex flex-col glass-panel rounded-3xl border border-purple-500/40 bg-slate-900 shadow-2xl overflow-hidden my-auto">
-            
+
             {/* Modal Header */}
             <div className="p-5 sm:p-6 border-b border-purple-500/20 bg-gradient-to-r from-slate-950 via-purple-950/30 to-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
               <div className="flex items-start sm:items-center gap-3.5">
@@ -863,11 +913,10 @@ export const HodDashboard = ({ user }) => {
                     <h3 className="text-xl sm:text-2xl font-black text-white">
                       Official Session Attendance Roster
                     </h3>
-                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                      viewingSession.is_frozen
-                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                    }`}>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 ${viewingSession.is_frozen
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      }`}>
                       {viewingSession.is_frozen ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                       <span>{viewingSession.is_frozen ? 'Sealed & Immutable' : 'Open / Active Session'}</span>
                     </span>
@@ -960,11 +1009,10 @@ export const HodDashboard = ({ user }) => {
                       <button
                         key={st}
                         onClick={() => setSessionFilterStatus(st)}
-                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                          sessionFilterStatus === st
-                            ? 'bg-purple-600 text-white shadow-md'
-                            : 'text-slate-400 hover:text-white'
-                        }`}
+                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${sessionFilterStatus === st
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'text-slate-400 hover:text-white'
+                          }`}
                       >
                         <span>{st}</span>
                         <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800/80 text-slate-300 font-mono">
@@ -985,11 +1033,10 @@ export const HodDashboard = ({ user }) => {
                     <button
                       key={b.id}
                       onClick={() => setSessionBatchFilter(b.id)}
-                      className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                        sessionBatchFilter === b.id
-                          ? 'bg-indigo-600 text-white shadow-md'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${sessionBatchFilter === b.id
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                        }`}
                     >
                       {b.label}
                     </button>
@@ -1075,17 +1122,15 @@ export const HodDashboard = ({ user }) => {
       <div className="flex bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 w-fit flex-wrap gap-1">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'overview' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-          }`}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'overview' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+            }`}
         >
           Department Overview
         </button>
         <button
           onClick={() => setActiveTab('locks')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-            activeTab === 'locks' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-          }`}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'locks' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+            }`}
         >
           <Lock className="w-3.5 h-3.5 text-purple-400" />
           <span>Daily Locks & Next Sessions</span>
@@ -1095,25 +1140,22 @@ export const HodDashboard = ({ user }) => {
         </button>
         <button
           onClick={() => setActiveTab('students')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'students' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-          }`}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'students' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+            }`}
         >
           All Students ({allStudents.length})
         </button>
         <button
           onClick={() => setActiveTab('faculties')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'faculties' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-          }`}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'faculties' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+            }`}
         >
           Faculty & Courses ({faculties.length})
         </button>
         <button
           onClick={() => setActiveTab('defaulters')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-            activeTab === 'defaulters' ? 'bg-amber-600 text-white shadow-md' : 'text-amber-400 hover:text-amber-300'
-          }`}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'defaulters' ? 'bg-amber-600 text-white shadow-md' : 'text-amber-400 hover:text-amber-300'
+            }`}
         >
           <span>Low Attendance Alerts</span>
           <span className="px-1.5 py-0.2 bg-amber-950 border border-amber-500/40 rounded-full text-[10px]">
@@ -1127,6 +1169,75 @@ export const HodDashboard = ({ user }) => {
         <div className="space-y-6">
 
           {/* =========================================================================
+              QUICK FREEZE • PENDING ATTENDANCE FINALIZATION BANNER
+              ========================================================================= */}
+          {pendingDates.length > 0 && (
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-950/90 via-slate-900 to-amber-950/90 border-2 border-amber-500/50 p-4 sm:p-5 shadow-2xl">
+              {/* glow */}
+              <div className="absolute inset-0 bg-amber-500/5 pointer-events-none" />
+              <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shadow-inner">
+                    <AlertTriangle className="w-6 h-6 text-amber-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-400">⚡ Quick Freeze</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        {pendingDates.length} Pending
+                      </span>
+                    </div>
+                    <div className="text-sm font-bold text-white mt-0.5">
+                      Attendance recorded — freeze to trigger next active session
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 flex flex-wrap gap-2.5">
+                  {pendingDates.map((l) => {
+                    const today = getTodayDate();
+                    const isOverdue = l.date < today;
+                    const isToday = l.date === today;
+                    return (
+                      <div key={l.date} className="flex items-center gap-3 bg-slate-950/80 border border-amber-500/40 rounded-xl px-3.5 py-2.5 shadow-md">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-amber-300 font-mono tracking-wider">{l.date}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                              isOverdue ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            }`}>
+                              {isOverdue ? 'Overdue' : isToday ? 'Today' : 'Active'}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            <strong className="text-white font-mono">{l.total_records || l.totalRecords || 0}</strong> records marked • Not frozen
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickFreeze(l.date)}
+                          disabled={freezingDate === l.date}
+                          className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black text-xs font-black transition-all disabled:opacity-60 cursor-pointer shadow-lg hover:shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                          {freezingDate === l.date ? (
+                            <><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>Freezing...</span></>
+                          ) : (
+                            <><Lock className="w-3.5 h-3.5" /><span>Quick Freeze & Advance</span></>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="text-xs text-amber-200/70 max-w-xs hidden xl:block leading-relaxed">
+                  Freezing permanently locks attendance and immediately triggers the next day's active session without delay.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* =========================================================================
               EXECUTIVE DAILY ATTENDANCE FINALIZATION & FREEZE PANEL (HOD EXCLUSIVE)
               ========================================================================= */}
           <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-purple-950/40 to-slate-900 border-2 border-purple-500/40 p-6 sm:p-8 shadow-2xl">
@@ -1137,7 +1248,7 @@ export const HodDashboard = ({ user }) => {
                   <span>Executive Attendance Finalization Authority</span>
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                  Daily Attendance Freeze & 1-Session Lockdown
+                  Daily Attendance Freeze
                 </h2>
                 <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
                   When you hit the <strong>Final</strong> button, attendance for the selected date is permanently frozen in SQLite. Neither faculty nor admin can modify records or create new sessions. The next session will automatically be scheduled for tomorrow morning.
@@ -1152,27 +1263,38 @@ export const HodDashboard = ({ user }) => {
                   </span>
                   <div className="flex items-center gap-2 bg-slate-900 px-3.5 py-1.5 rounded-xl border border-purple-500/30">
                     <Calendar className="w-3.5 h-3.5 text-purple-400" />
-                    {allLocks.length > 0 ? (
-                      <select
-                        value={selectedDate}
-                        onChange={(e) => {
-                          const newD = e.target.value;
-                          setSelectedDate(newD);
-                          loadLockStatus(newD);
-                        }}
-                        className="bg-transparent text-white text-xs font-mono font-black tracking-wider focus:outline-none cursor-pointer border-none"
-                      >
-                        {allLocks.map((l) => (
-                          <option key={l.id || l.date} value={l.date} className="bg-slate-900 text-white font-mono">
-                            {l.date} {l.is_frozen ? '(Frozen)' : '(Active)'}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="text-white text-xs font-mono font-black tracking-wider">
-                        {selectedDate}
-                      </span>
-                    )}
+                    {(() => {
+                      const today = getTodayDate();
+                      // Only show dates <= today (real-time and past sessions; never allow future dates like the 17th)
+                      const validLocks = allLocks.filter((l) => l.date <= today);
+                      const options = [...validLocks];
+                      if (!options.some((l) => l.date === today)) {
+                        options.unshift({ date: today, is_frozen: 0 });
+                      }
+                      if (selectedDate && selectedDate <= today && !options.some((l) => l.date === selectedDate)) {
+                        options.unshift({ date: selectedDate, is_frozen: lockStatus?.is_frozen ? 1 : 0 });
+                      }
+                      const uniqueOptions = options.filter((v, i, a) => a.findIndex((t) => t.date === v.date) === i);
+                      uniqueOptions.sort((a, b) => b.date.localeCompare(a.date));
+
+                      return (
+                        <select
+                          value={selectedDate}
+                          onChange={(e) => {
+                            const newD = e.target.value;
+                            setSelectedDate(newD);
+                            loadLockStatus(newD);
+                          }}
+                          className="bg-transparent text-white text-xs font-mono font-black tracking-wider focus:outline-none cursor-pointer border-none"
+                        >
+                          {uniqueOptions.map((l) => (
+                            <option key={l.id || l.date} value={l.date} className="bg-slate-900 text-white font-mono">
+                              {l.date} {l.date === today ? '(Today - Real-Time)' : l.is_frozen ? '(Frozen)' : '(Active)'}
+                            </option>
+                          ))}
+                        </select>
+                      );
+                    })()}
                     <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">
                       {lockStatus?.is_frozen ? 'Frozen' : 'Active'}
                     </span>
@@ -1183,8 +1305,10 @@ export const HodDashboard = ({ user }) => {
                   <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                     Lock State
                   </span>
-                  {loadingLock ? (
-                    <span className="text-xs text-slate-400 animate-pulse">Checking status...</span>
+                  {loadingLock && !lockStatus ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/60 text-slate-500 border border-slate-700/40 text-xs font-black animate-pulse">
+                      <span>Checking...</span>
+                    </span>
                   ) : lockStatus?.is_frozen ? (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/40 text-xs font-black">
                       <Lock className="w-3.5 h-3.5 text-purple-400" />
@@ -1489,8 +1613,8 @@ export const HodDashboard = ({ user }) => {
 
       {/* TAB CONTENT 2: ALL STUDENTS TABLE */}
       {activeTab === 'students' && (
-        <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="glass-panel rounded-2xl border border-slate-800 shadow-xl">
+          <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-base font-bold text-white">Student Enrollment & Attendance Table</h3>
             <div className="relative w-64">
               <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
@@ -1504,7 +1628,7 @@ export const HodDashboard = ({ user }) => {
             </div>
           </div>
 
-          <div className="p-4 sm:p-6">
+          <div className="p-4 sm:p-6 min-w-0">
             <InfiniteTable
               columns={hodStudentColumns}
               items={hodStudentsQuery.items.length > 0 ? hodStudentsQuery.items : (hodStudentsQuery.isInitialLoading ? [] : filteredStudents)}

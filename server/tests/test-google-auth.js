@@ -1,4 +1,4 @@
-import { initDatabase, getQuery, runQuery } from './database.js';
+import { initDatabase, getQuery, runQuery } from '../database.js';
 import jwt from 'jsonwebtoken';
 
 const API_BASE = 'http://localhost:5000/api';

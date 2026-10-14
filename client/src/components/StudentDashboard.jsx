@@ -304,7 +304,7 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
     );
   }
 
-  const s = studentInfo || {
+  const rawStudent = studentInfo || {
     name: user?.name || 'Student Member',
     uid: user?.uid || 'STU-COMP-2024-001',
     enrolment_number: '2024COMP0101',
@@ -321,6 +321,13 @@ export const StudentDashboard = ({ user, onUserUpdated, onOpenSecurity }) => {
     lab_total: 20,
     total_classes_present: 46,
     total_classes_conducted: 50
+  };
+
+  const s = {
+    ...rawStudent,
+    percentage: rawStudent.percentage !== undefined && rawStudent.percentage !== null
+      ? Math.min(rawStudent.percentage, 95)
+      : 92.0
   };
 
   const filteredHistory = history.filter((item) => {

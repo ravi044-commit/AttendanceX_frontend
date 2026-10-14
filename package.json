@@ -19,6 +19,21 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^10.0.16",
-    "sqlite3": "^5.1.7"
-  }
+    "sqlite3": "^6.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^26.6.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ravi044-commit/AttendanceX_frontend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ravi044-commit/AttendanceX_frontend/issues"
+  },
+  "homepage": "https://github.com/ravi044-commit/AttendanceX_frontend#readme"
 }

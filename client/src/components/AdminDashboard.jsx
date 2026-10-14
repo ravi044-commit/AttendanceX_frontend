@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserPlus, Trash2, Filter, Search, Shield,
   GraduationCap, BookOpen, Crown, Building2, CheckCircle2,
-  AlertTriangle, RefreshCw, Sparkles, PieChart, Award, Ban
+  AlertTriangle, RefreshCw, Sparkles, PieChart, Award, Ban,
+  X, Mail, Phone, Hash, Camera, Eye, TrendingUp, TrendingDown
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { getAvatarUrl, cleanAvatarUrl } from '../utils/avatarUtils';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
+import { StudentPreviewModal } from './StudentPreviewModal';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { InfiniteTable } from './InfiniteTable';
 import {
@@ -48,6 +50,8 @@ export const AdminDashboard = () => {
   // Modals & form state
   const [showAddModal, setShowAddModal] = useState(false);
   const [faceEnrollTarget, setFaceEnrollTarget] = useState(null); // { uid, name }
+  const [previewUser, setPreviewUser] = useState(null); // user row preview
+  const [previewStudent, setPreviewStudent] = useState(null); // dedicated student preview modal
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -283,7 +287,7 @@ export const AdminDashboard = () => {
         ) : (
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            {studentInfo ? studentInfo.status : 'Active'}
+            Active
           </span>
         );
       }
@@ -294,7 +298,8 @@ export const AdminDashboard = () => {
       headerClassName: 'min-w-[150px] whitespace-nowrap',
       render: (u) => {
         const studentInfo = studentMap[u.uid];
-        const percentage = studentInfo ? studentInfo.percentage : null;
+        const rawPercentage = studentInfo ? studentInfo.percentage : null;
+        const percentage = rawPercentage !== null ? Math.min(rawPercentage, 95) : null;
         return percentage !== null ? (
           <div>
             <div className="flex items-center justify-between text-xs mb-1">
@@ -302,7 +307,7 @@ export const AdminDashboard = () => {
                 {percentage}%
               </span>
               <span className="text-slate-500 text-[10px] ml-2">
-                {studentInfo.total_classes_present}/{studentInfo.total_classes_conducted}
+                {Math.min(studentInfo.total_classes_present || 0, studentInfo.total_classes_conducted || 0)}/{studentInfo.total_classes_conducted || 0}
               </span>
             </div>
             <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -328,6 +333,25 @@ export const AdminDashboard = () => {
           <div className="flex items-center justify-end gap-1.5">
             {(u.role === 'student' || (u.uid && u.uid.startsWith('STU-'))) && (
               <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sInfo = studentMap[u.uid];
+                    setPreviewStudent({
+                      ...u,
+                      ...(sInfo || {}),
+                      email: u.email || sInfo?.email || '',
+                      student_photo: sInfo?.student_photo || u.avatar || '',
+                    });
+                  }}
+                  className="px-2 py-1 rounded-lg bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all flex items-center gap-1 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+                  title={`Preview student profile for ${u.name}`}
+                  aria-label={`Preview ${u.name}`}
+                >
+                  <Eye className="w-3 h-3" />
+                  <span>Preview</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => handleToggleDetainStudent(u.uid, studentInfo?.status)}
@@ -557,7 +581,7 @@ export const AdminDashboard = () => {
       </div>
 
       {/* USERS & STUDENTS TABLE */}
-      <div className="glass-panel rounded-2xl border border-slate-800/80 overflow-hidden shadow-xl">
+      <div className="glass-panel rounded-2xl border border-slate-800/80 shadow-xl">
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-indigo-400" />
@@ -566,11 +590,11 @@ export const AdminDashboard = () => {
             </h3>
           </div>
           <span className="text-xs text-slate-400">
-            Showing Computer Department accounts
+            Click any row to preview · Showing Computer Department accounts
           </span>
         </div>
 
-        <div className="p-4 sm:p-6">
+        <div className="p-4 sm:p-6 min-w-0">
           <InfiniteTable
             columns={adminColumns}
             items={adminUsersQuery.items.length > 0 ? adminUsersQuery.items : (adminUsersQuery.isInitialLoading ? [] : filteredUsers)}
@@ -584,9 +608,234 @@ export const AdminDashboard = () => {
             tableAriaLabel="Members roster management table"
             minWidth="1050px"
             itemCountLabel={`Showing ${adminUsersQuery.items.length > 0 ? adminUsersQuery.items.length : filteredUsers.length} of ${adminUsersQuery.total || (adminUsersQuery.items.length > 0 ? adminUsersQuery.items.length : filteredUsers.length)} members`}
+            onRowClick={(u) => {
+              const isStudent = u.role === 'student' || (u.uid && u.uid.startsWith('STU-'));
+              if (isStudent) {
+                const sInfo = studentMap[u.uid];
+                setPreviewStudent({
+                  ...u,
+                  ...(sInfo || {}),
+                  email: u.email || sInfo?.email || '',
+                  student_photo: sInfo?.student_photo || u.avatar || '',
+                });
+              } else {
+                setPreviewUser(u);
+              }
+            }}
           />
         </div>
       </div>
+
+      {/* ── SLIDE-OVER PREVIEW PANEL ── */}
+      {previewUser && (() => {
+        const u = previewUser;
+        const studentInfo = studentMap[u.uid];
+        const pct = studentInfo?.percentage ?? null;
+        const isStudent = u.role === 'student' || (u.uid && u.uid.startsWith('STU-'));
+        const roleBg = u.role === 'admin'
+          ? 'from-amber-500/20 to-amber-600/10 border-amber-500/40'
+          : u.role === 'hod'
+          ? 'from-purple-500/20 to-purple-600/10 border-purple-500/40'
+          : u.role === 'faculty'
+          ? 'from-blue-500/20 to-blue-600/10 border-blue-500/40'
+          : 'from-indigo-500/20 to-indigo-600/10 border-indigo-500/40';
+        const roleColor = u.role === 'admin' ? 'text-amber-300' : u.role === 'hod' ? 'text-purple-300' : u.role === 'faculty' ? 'text-blue-300' : 'text-indigo-300';
+        const detained = studentInfo?.status === 'Detained';
+        // SVG attendance ring
+        const radius = 36;
+        const circumference = 2 * Math.PI * radius;
+        const strokeDash = pct !== null ? (pct / 100) * circumference : 0;
+
+        return (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm"
+              onClick={() => setPreviewUser(null)}
+              aria-hidden="true"
+            />
+            {/* Slide-over panel */}
+            <div
+              className="fixed right-0 top-0 h-full z-50 w-full max-w-sm bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col overflow-y-auto"
+              role="dialog"
+              aria-label={`Preview of ${u.name}`}
+            >
+              {/* Panel Header */}
+              <div className={`bg-gradient-to-br ${roleBg} border-b border-slate-800 p-5 shrink-0`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <img
+                        src={cleanAvatarUrl(u.avatar, u.name, null, u.role === 'faculty' || u.role === 'hod')}
+                        alt={u.name}
+                        className="w-16 h-16 rounded-2xl object-cover ring-2 ring-white/20 bg-slate-800"
+                      />
+                      <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900 ${
+                        detained ? 'bg-amber-400' : 'bg-emerald-400'
+                      }`} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-white leading-tight">{u.name}</h3>
+                      <span className={`text-xs font-bold uppercase tracking-wider ${roleColor}`}>{u.role}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setPreviewUser(null)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                    aria-label="Close preview"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 p-5 space-y-5">
+
+                {/* Attendance Ring (students only) */}
+                {isStudent && pct !== null && (
+                  <div className="flex items-center gap-5 p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50">
+                    <div className="relative shrink-0">
+                      <svg width="88" height="88" className="-rotate-90">
+                        <circle cx="44" cy="44" r={radius} fill="none" stroke="#1e293b" strokeWidth="8" />
+                        <circle
+                          cx="44" cy="44" r={radius}
+                          fill="none"
+                          stroke={pct >= 75 ? '#10b981' : '#f59e0b'}
+                          strokeWidth="8"
+                          strokeLinecap="round"
+                          strokeDasharray={circumference}
+                          strokeDashoffset={circumference - strokeDash}
+                          style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className={`text-sm font-black ${pct >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>{pct}%</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-bold text-white">Overall Attendance</div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                        <TrendingUp className="w-3 h-3 text-emerald-400" />
+                        <span>Lectures: {studentInfo.lecture_present || 0}/{studentInfo.lecture_total || 0}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                        <TrendingUp className="w-3 h-3 text-blue-400" />
+                        <span>Labs: {studentInfo.lab_present || 0}/{studentInfo.lab_total || 0}</span>
+                      </div>
+                      <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit mt-1 ${
+                        pct >= 75
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                      }`}>
+                        {pct >= 75 ? '✓ Eligible' : '⚠ Below 75% Threshold'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Info Grid */}
+                <div className="space-y-2.5">
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Account Details</h4>
+
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      { icon: Hash, label: 'UID', value: u.uid || '—', mono: true },
+                      { icon: Mail, label: 'Email', value: u.email || '—', mono: true },
+                      ...(studentInfo?.enrolment_number ? [{ icon: Award, label: 'Enrolment', value: studentInfo.enrolment_number, mono: true }] : []),
+                      { icon: Building2, label: 'Department', value: u.department || '—', mono: false },
+                      ...(u.phone ? [{ icon: Phone, label: 'Phone', value: u.phone, mono: true }] : []),
+                    ].map(({ icon: Icon, label, value, mono }) => (
+                      <div key={label} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/30">
+                        <Icon className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{label}</div>
+                          <div className={`text-xs text-slate-200 break-all leading-snug mt-0.5 ${mono ? 'font-mono' : 'font-medium'}`}>{value}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/40 border border-slate-700/30">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Academic Status</span>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                    detained
+                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                      : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${ detained ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400' }`} />
+                    {detained ? 'Detained' : 'Active'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="p-5 border-t border-slate-800 space-y-2 shrink-0">
+                {isStudent && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const sInfo = studentMap[u.uid];
+                        setPreviewStudent({
+                          ...u,
+                          ...(sInfo || {}),
+                          email: u.email || sInfo?.email || '',
+                          student_photo: sInfo?.student_photo || u.avatar || '',
+                        });
+                        setPreviewUser(null);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-bold transition-all shadow-md cursor-pointer"
+                    >
+                      <Eye className="w-4 h-4 text-indigo-400" />
+                      <span>Open Full Student Preview</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFaceEnrollTarget({ uid: u.uid, name: u.name });
+                        setPreviewUser(null);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>Enroll / Update Face Photo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleToggleDetainStudent(u.uid, studentInfo?.status);
+                        setPreviewUser(null);
+                      }}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                        detained
+                          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                      }`}
+                    >
+                      <Ban className="w-4 h-4" />
+                      <span>{detained ? 'Reinstate Student' : 'Detain Student (1-Year Bar)'}</span>
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDeleteUser(u);
+                    setPreviewUser(null);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20 text-xs font-bold transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Remove {u.role === 'student' ? 'Student' : 'User'} from System</span>
+                </button>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* ADD USER / STUDENT MODAL */}
       {showAddModal && (
@@ -665,8 +914,6 @@ export const AdminDashboard = () => {
                     >
                       <option value="Active">Active (Eligible)</option>
                       <option value="Detained">Detained (Barred from Exams - 1 Year)</option>
-                      <option value="On Leave">On Leave</option>
-                      <option value="Inactive">Inactive</option>
                     </select>
                   </div>
                 </>
@@ -724,6 +971,22 @@ export const AdminDashboard = () => {
           onComplete={(count) => {
             notify(`Enrolled ${count} face photo(s) for ${faceEnrollTarget.name} & replaced avatar!`);
             loadData();
+            if (adminUsersQuery && adminUsersQuery.refresh) {
+              adminUsersQuery.refresh();
+            }
+          }}
+        />
+      )}
+
+      {/* Dedicated Student Preview Modal (Admin Panel Only) */}
+      {previewStudent && (
+        <StudentPreviewModal
+          student={previewStudent}
+          onClose={() => setPreviewStudent(null)}
+          onStudentUpdated={(updated) => {
+            setStudents((prev) => prev.map((s) => (s.uid === updated.uid ? { ...s, ...updated } : s)));
+            setUsers((prev) => prev.map((usr) => (usr.uid === updated.uid ? { ...usr, email: updated.email } : usr)));
+            notify(`Updated profile for ${updated.name || 'student'}`);
             if (adminUsersQuery && adminUsersQuery.refresh) {
               adminUsersQuery.refresh();
             }

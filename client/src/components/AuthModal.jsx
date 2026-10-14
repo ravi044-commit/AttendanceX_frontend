@@ -33,8 +33,11 @@ export const AuthModal = ({
   const [googleScriptReady, setGoogleScriptReady] = useState(false);
 
   // Form fields for Forgot Password / Recovery flow
-  const [recoveryStep, setRecoveryStep] = useState(1); // 1: Email, 2: OTP, 3: New Password, 4: Done
+  const [recoveryStep, setRecoveryStep] = useState(1); // 1: Email & Password, 2: OTP, 3: New Password, 4: Done
   const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryPassword, setRecoveryPassword] = useState('');
+  const [showRecoveryPassword, setShowRecoveryPassword] = useState(false);
+  const [displayEmail, setDisplayEmail] = useState('');
   const [recoveryOtp, setRecoveryOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -102,6 +105,9 @@ export const AuthModal = ({
       setShowPassword(false);
       setRecoveryStep(1);
       setRecoveryEmail('');
+      setRecoveryPassword('');
+      setShowRecoveryPassword(false);
+      setDisplayEmail('');
       setRecoveryOtp('');
       setNewPassword('');
       setConfirmPassword('');
@@ -337,7 +343,9 @@ export const AuthModal = ({
 
     try {
       const res = await api.sendOtp(targetEmail, 'password_recovery');
-      setRecoveryEmail(targetEmail);
+      const verifiedEmail = res.email || targetEmail;
+      setRecoveryEmail(verifiedEmail);
+      setDisplayEmail(res.email || targetEmail);
       setRecoveryStep(2);
       setOtpTimer(res.expiresInSeconds || 300);
       setResendCooldown(60);
@@ -345,7 +353,7 @@ export const AuthModal = ({
         setRecoveryOtp(res.debugOtp);
         setSuccessMsg(`Test Mode: Verification code is ${res.debugOtp}`);
       } else {
-        setSuccessMsg(res.message || 'Verification code sent to your email.');
+        setSuccessMsg(res.message || `Verification code sent to ${res.email || targetEmail}`);
       }
     } catch (err) {
       setError(err.message || 'Failed to send recovery code.');
@@ -546,6 +554,9 @@ export const AuthModal = ({
                     setMode('forgot_password');
                     setRecoveryStep(1);
                     setRecoveryEmail(email);
+                    setRecoveryPassword(password || '');
+                    setShowRecoveryPassword(false);
+                    setDisplayEmail('');
                     setError('');
                     setSuccessMsg('');
                   }}
@@ -730,7 +741,7 @@ export const AuthModal = ({
                 <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-xs text-indigo-300 flex items-start gap-2 box-border">
                   <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                   <span className="leading-relaxed">
-                    Enter your email address (Gmail, Yahoo, Outlook) or Enrollment Number to receive a secure 6-digit verification code.
+                    Enter your Email address or Enrollment Number to receive a secure 6-digit verification code. Once verified, you will be able to set your new password.
                   </span>
                 </div>
 
@@ -786,10 +797,10 @@ export const AuthModal = ({
               <form onSubmit={handleVerifyRecoveryOtp} className="space-y-4 w-full box-border">
                 <div className="text-center py-2">
                   <div className="text-xs text-slate-400">
-                    Verification code sent to:
+                    Verification code sent to registered email:
                   </div>
-                  <div className="text-sm font-mono font-bold text-indigo-300 mt-0.5 truncate">
-                    {recoveryEmail}
+                  <div className="text-sm font-mono font-bold text-indigo-300 mt-1 px-3 py-1 bg-indigo-500/10 rounded-xl inline-block border border-indigo-500/20 max-w-full truncate">
+                    {displayEmail || recoveryEmail}
                   </div>
                 </div>
 
@@ -802,7 +813,7 @@ export const AuthModal = ({
                     </span>
                   </div>
                   <div className="text-[11px] text-amber-400/80 pl-6">
-                    Changing the email address will cancel and reset the code.
+                    Changing the account details will cancel and reset the code.
                   </div>
                 </div>
 
@@ -847,7 +858,7 @@ export const AuthModal = ({
                     className="flex-1 min-w-0 py-2.5 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer box-border"
                   >
                     <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Change Email</span>
+                    <span className="truncate">Change Details</span>
                   </button>
                   <button
                     type="submit"

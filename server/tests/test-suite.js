@@ -1,4 +1,4 @@
-import { getStudentBatch } from './database.js';
+import { getStudentBatch } from '../database.js';
 
 const API_BASE = 'http://localhost:5000/api';
 

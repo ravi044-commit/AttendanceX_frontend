@@ -3,15 +3,16 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config();
+
 const API_BASE = 'http://localhost:5000/api';
 const faceDbBase = process.env.FACE_DB_PATH
-  ? (path.isAbsolute(process.env.FACE_DB_PATH) ? process.env.FACE_DB_PATH : path.resolve(__dirname, process.env.FACE_DB_PATH))
-  : path.resolve(__dirname, 'face_db');
+  ? (path.isAbsolute(process.env.FACE_DB_PATH) ? process.env.FACE_DB_PATH : path.resolve(__dirname, '..', process.env.FACE_DB_PATH))
+  : path.resolve(__dirname, '../face_db');
 
 async function runFaceEnrollmentTest() {
   console.log('====================================================');

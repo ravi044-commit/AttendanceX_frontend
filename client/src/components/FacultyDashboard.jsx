@@ -30,8 +30,12 @@ export const FacultyDashboard = ({ user }) => {
 
   // Take Attendance Session state
   const [selectedClass, setSelectedClass] = useState(null);
+  const getTodayDate = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const [sessionType, setSessionType] = useState('Lecture'); // 'Lecture' or 'Lab'
-  const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [sessionDate, setSessionDate] = useState(getTodayDate);
   const [attendanceMap, setAttendanceMap] = useState({});
   const [searchRoster, setSearchRoster] = useState('');
 
@@ -242,7 +246,7 @@ export const FacultyDashboard = ({ user }) => {
 
       const result = await api.markAttendance(payload);
       notify(result.message || 'Attendance saved to SQLite database successfully!');
-      
+
       // Refresh list and switch to history view
       loadData();
     } catch (err) {
@@ -375,11 +379,10 @@ export const FacultyDashboard = ({ user }) => {
         const recClass = getStudentClass(rec.enrolment_number, rec.student_uid);
         return (
           <span
-            className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-              recClass === 'Class A' || recClass === 'Batch A'
-                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-            }`}
+            className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${recClass === 'Class A' || recClass === 'Batch A'
+              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+              }`}
           >
             {recClass}
           </span>
@@ -412,11 +415,10 @@ export const FacultyDashboard = ({ user }) => {
         return (
           <button
             onClick={() => handleToggleHistoryRecordStatus(rec)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 ${
-              isPresent
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40'
-                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-            }`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 ${isPresent
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40'
+              : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+              }`}
             aria-label={`Toggle attendance status for ${rec.student_name}. Currently ${rec.status}`}
             title={`Click to toggle status to ${isPresent ? 'Absent' : 'Present'}`}
           >
@@ -442,11 +444,10 @@ export const FacultyDashboard = ({ user }) => {
       {/* Toast Alert */}
       {notification.show && (
         <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border shadow-xl flex items-center gap-3 transition-all ${
-            notification.type === 'error'
-              ? 'bg-rose-950 border-rose-800 text-rose-200'
-              : 'bg-emerald-950 border-emerald-800 text-emerald-200'
-          }`}
+          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border shadow-xl flex items-center gap-3 transition-all ${notification.type === 'error'
+            ? 'bg-rose-950 border-rose-800 text-rose-200'
+            : 'bg-emerald-950 border-emerald-800 text-emerald-200'
+            }`}
         >
           <CheckCircle className="w-5 h-5 text-emerald-400" />
           <span className="text-sm font-medium">{notification.message}</span>
@@ -495,11 +496,10 @@ export const FacultyDashboard = ({ user }) => {
       <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 w-fit">
         <button
           onClick={() => setActiveTab('take')}
-          className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'take'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
-              : 'text-slate-400 hover:text-white'
-          }`}
+          className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'take'
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+            : 'text-slate-400 hover:text-white'
+            }`}
         >
           <CheckSquare className="w-4 h-4" />
           <span>Take Roll Call ({loading ? '...' : totalStudents} Students)</span>
@@ -507,11 +507,10 @@ export const FacultyDashboard = ({ user }) => {
 
         <button
           onClick={() => setActiveTab('history')}
-          className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'history'
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
-              : 'text-slate-400 hover:text-white'
-          }`}
+          className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'history'
+            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
+            : 'text-slate-400 hover:text-white'
+            }`}
         >
           <FileText className="w-4 h-4" />
           <span>View Saved Attendance Sheets ({loading ? '...' : sessionsList.length} Sessions)</span>
@@ -608,22 +607,20 @@ export const FacultyDashboard = ({ user }) => {
                   <button
                     type="button"
                     onClick={() => setSessionType('Lecture')}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                      sessionType === 'Lecture'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${sessionType === 'Lecture'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                      }`}
                   >
                     Lecture (Theory)
                   </button>
                   <button
                     type="button"
                     onClick={() => setSessionType('Lab')}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                      sessionType === 'Lab'
-                        ? 'bg-violet-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${sessionType === 'Lab'
+                      ? 'bg-violet-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                      }`}
                   >
                     Practical Lab
                   </button>
@@ -653,7 +650,9 @@ export const FacultyDashboard = ({ user }) => {
                   <h3 className="text-lg font-bold text-white">Student Roll Call List ({filteredRoster.length})</h3>
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    RFID & Face Sync
+
+
+
                   </span>
                 </div>
                 <p className="text-xs text-slate-400">
@@ -672,11 +671,10 @@ export const FacultyDashboard = ({ user }) => {
                     <button
                       key={b.id}
                       onClick={() => setBatchFilter(b.id)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                        batchFilter === b.id
-                          ? 'bg-indigo-600 text-white shadow-md'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${batchFilter === b.id
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                        }`}
                     >
                       {b.label}
                     </button>
@@ -743,59 +741,57 @@ export const FacultyDashboard = ({ user }) => {
                       key={student.uid}
                       className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-900/40 transition-colors fade-in-content"
                     >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <img
-                        src={cleanAvatarUrl(student.student_photo, student.name, null, false)}
-                        alt={student.name}
-                        className="w-10 h-10 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700 shrink-0"
-                      />
-                      <div className="min-w-0">
-                        <div className="font-bold text-white text-sm whitespace-nowrap">{student.name}</div>
-                        <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-indigo-400 whitespace-nowrap">{student.enrolment_number}</span>
-                          <span>•</span>
-                          <span className="whitespace-nowrap">UID: {student.uid}</span>
-                          <span>•</span>
-                          <span className="text-emerald-400 font-semibold whitespace-nowrap">{student.percentage}% Overall Attendance</span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={cleanAvatarUrl(student.student_photo, student.name, null, false)}
+                          alt={student.name}
+                          className="w-10 h-10 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="font-bold text-white text-sm whitespace-nowrap">{student.name}</div>
+                          <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-indigo-400 whitespace-nowrap">{student.enrolment_number}</span>
+                            <span>•</span>
+                            <span className="whitespace-nowrap">UID: {student.uid}</span>
+                            <span>•</span>
+                            <span className="text-emerald-400 font-semibold whitespace-nowrap">{Math.min(student.percentage !== undefined && student.percentage !== null ? student.percentage : 0, 95)}% Overall Attendance</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {student.status === 'Detained' ? (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold shadow-sm self-end sm:self-center">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>Detained (1-Yr Exam Bar)</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 self-end sm:self-center">
-                        <button
-                          onClick={() => setAttendanceMap((prev) => ({ ...prev, [student.uid]: 'Present' }))}
-                          className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                            isPresent
+                      {student.status === 'Detained' ? (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold shadow-sm self-end sm:self-center">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>Detained (1-Yr Exam Bar)</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          <button
+                            onClick={() => setAttendanceMap((prev) => ({ ...prev, [student.uid]: 'Present' }))}
+                            className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${isPresent
                               ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/25 scale-105'
                               : 'bg-slate-900 text-slate-400 hover:text-emerald-300 border border-slate-800'
-                          }`}
-                        >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span>Present</span>
-                        </button>
+                              }`}
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Present</span>
+                          </button>
 
-                        <button
-                          onClick={() => setAttendanceMap((prev) => ({ ...prev, [student.uid]: 'Absent' }))}
-                          className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                            isAbsent
+                          <button
+                            onClick={() => setAttendanceMap((prev) => ({ ...prev, [student.uid]: 'Absent' }))}
+                            className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${isAbsent
                               ? 'bg-rose-600 text-white shadow-md shadow-rose-500/25 scale-105'
                               : 'bg-slate-900 text-slate-400 hover:text-rose-300 border border-slate-800'
-                          }`}
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Absent</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              }))}
+                              }`}
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Absent</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }))}
             </div>
 
             <div className="p-6 bg-slate-950/80 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -828,7 +824,7 @@ export const FacultyDashboard = ({ user }) => {
       {/* TAB 2: SAVED ATTENDANCE HISTORY SHEETS */}
       {activeTab === 'history' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+
           {/* Left Column: List of Past Recorded Sessions */}
           <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
             <div className="flex items-center justify-between">
@@ -873,19 +869,17 @@ export const FacultyDashboard = ({ user }) => {
                       <div
                         key={idx}
                         onClick={() => viewSavedSession(ses)}
-                        className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-indigo-950/60 border-indigo-500/60 shadow-lg'
-                            : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900'
-                        }`}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition-all ${isSelected
+                          ? 'bg-indigo-950/60 border-indigo-500/60 shadow-lg'
+                          : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900'
+                          }`}
                       >
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="font-mono text-xs font-bold text-indigo-300">
                             {ses.date}
                           </span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            ses.session_type === 'Lab' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${ses.session_type === 'Lab' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'
+                            }`}>
                             {ses.session_type}
                           </span>
                         </div>
@@ -925,9 +919,8 @@ export const FacultyDashboard = ({ user }) => {
                       <span className="font-mono text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
                         {selectedHistorySession.date}
                       </span>
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
-                        selectedHistorySession.session_type === 'Lab' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${selectedHistorySession.session_type === 'Lab' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'
+                        }`}>
                         {selectedHistorySession.session_type}
                       </span>
                     </div>
@@ -973,11 +966,10 @@ export const FacultyDashboard = ({ user }) => {
                         <button
                           key={st}
                           onClick={() => setHistoryFilterStatus(st)}
-                          className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                            historyFilterStatus === st
-                              ? 'bg-indigo-600 text-white shadow-md'
-                              : 'text-slate-400 hover:text-white'
-                          }`}
+                          className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${historyFilterStatus === st
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-400 hover:text-white'
+                            }`}
                         >
                           {st}
                         </button>
@@ -994,11 +986,10 @@ export const FacultyDashboard = ({ user }) => {
                         <button
                           key={b.id}
                           onClick={() => setHistoryBatchFilter(b.id)}
-                          className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                            historyBatchFilter === b.id
-                              ? 'bg-purple-600 text-white shadow-md'
-                              : 'text-slate-400 hover:text-white'
-                          }`}
+                          className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${historyBatchFilter === b.id
+                            ? 'bg-purple-600 text-white shadow-md'
+                            : 'text-slate-400 hover:text-white'
+                            }`}
                         >
                           {b.label}
                         </button>

@@ -21,7 +21,7 @@ import {
   runQuery,
   getQuery,
   allQuery
-} from './database.js';
+} from '../database.js';
 import {
   requestOtp,
   verifyOtp,
@@ -33,13 +33,13 @@ import {
   generateSecureOtp,
   OTP_EXPIRY_MS,
   MAX_VERIFY_ATTEMPTS
-} from './otpService.js';
+} from '../otpService.js';
 import {
   sendVerificationOtpEmail,
   sendEmailChangeNotice,
   emailDeliveryLogs
-} from './emailService.js';
-import { SmtpClient } from './smtpClient.js';
+} from '../emailService.js';
+import { SmtpClient } from '../smtpClient.js';
 
 let passedTests = 0;
 let totalTests = 0;

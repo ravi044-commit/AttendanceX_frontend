@@ -218,19 +218,23 @@ export const api = {
   },
 
   // Feature 6: Email OTP Verification & Account Security
-  sendOtp: async (email, purpose, currentEmailOrUser = null) => {
+  sendOtp: async (email, purpose, currentEmailOrUser = null, password = null) => {
     let currentEmail = null;
     let uid = null;
+    let pass = password;
     if (typeof currentEmailOrUser === 'string') {
       currentEmail = currentEmailOrUser;
     } else if (currentEmailOrUser && typeof currentEmailOrUser === 'object') {
       currentEmail = currentEmailOrUser.email;
       uid = currentEmailOrUser.uid;
+      if (currentEmailOrUser.password && !pass) {
+        pass = currentEmailOrUser.password;
+      }
     }
     const res = await fetchWithTimeout(`${API_BASE}/auth/otp/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ email, purpose, currentEmail, uid }),
+      body: JSON.stringify({ email, purpose, currentEmail, uid, password: pass }),
     });
     return parseResponse(res, 'Failed to send verification code');
   },
@@ -337,6 +341,15 @@ export const api = {
     return { uid, ...updates, ...(typeof data === 'object' && data !== null ? data : {}) };
   },
 
+  updateUserEmail: async (uidOrId, email) => {
+    const res = await fetchWithTimeout(`${API_BASE}/users/${encodeURIComponent(uidOrId)}/email`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ email }),
+    });
+    return parseResponse(res, 'Failed to update email address');
+  },
+
   deleteStudent: async (uid) => {
     const res = await fetchWithTimeout(`${API_BASE}/students/${uid}`, {
       method: 'DELETE',
@@ -407,14 +420,20 @@ export const api = {
     return parseResponse(res, 'Failed to fetch attendance summary');
   },
 
-  getAttendanceSessions: async (department = 'Computer Department', params = {}) => {
-    const query = new URLSearchParams({ department, ...params }).toString();
+  getAttendanceSessions: async (departmentOrParams = 'Computer Department', maybeParams = {}) => {
+    let resolvedParams = {};
+    if (typeof departmentOrParams === 'object' && departmentOrParams !== null) {
+      resolvedParams = { department: 'Computer Department', ...departmentOrParams };
+    } else {
+      resolvedParams = { department: departmentOrParams || 'Computer Department', ...maybeParams };
+    }
+    const query = new URLSearchParams(resolvedParams).toString();
     const res = await fetchWithTimeout(`${API_BASE}/attendance/sessions-list?${query}`, {
       headers: { ...getAuthHeaders() }
     });
     const data = await parseResponse(res, 'Failed to fetch attendance sessions');
     if (data && typeof data === 'object' && Array.isArray(data.items)) {
-      if (params.page !== undefined) {
+      if (resolvedParams.page !== undefined) {
         return data;
       }
       return data.items;
