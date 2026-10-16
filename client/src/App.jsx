@@ -228,16 +228,6 @@ export default function App() {
             
             {/* HERO SECTION */}
             <div className="text-center max-w-4xl mx-auto space-y-6 pt-6 sm:pt-10">
-              
-              {/* Modern Feature Pill Badge */}
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-semibold tracking-wide uppercase shadow-lg shadow-indigo-500/10">
-                <span className="flex h-2 w-2 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                </span>
-                <span>Next-Gen Semester Attendance SaaS • Computer Department</span>
-              </div>
-
               {/* Commanding Headline with Animated Gradient Text */}
               <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-slate-900 dark:text-white leading-[1.12]">
                 Smart Academic Attendance with{' '}
@@ -258,7 +248,7 @@ export default function App() {
                   className="btn-primary-glow px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-sm shadow-xl shadow-indigo-500/30 flex items-center gap-2 group cursor-pointer"
                 >
                   <LogIn className="w-4 h-4 text-indigo-200" />
-                  <span>Access Portal</span>
+                  <span>Sign In</span>
                   <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
                 </button>
 

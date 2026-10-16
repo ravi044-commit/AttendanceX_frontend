@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, LogOut, Sparkles, UserCheck, Calendar, Shield, BookOpen, GraduationCap, Crown, ShieldCheck } from 'lucide-react';
+import { Users, LogOut, Sparkles, Calendar, Shield, BookOpen, GraduationCap, Crown, ShieldCheck } from 'lucide-react';
 import { cleanAvatarUrl } from '../utils/avatarUtils';
 
 export const Navbar = ({
@@ -33,9 +33,6 @@ export const Navbar = ({
               <div className="flex items-center gap-2">
                 <span className="text-xl sm:text-2xl font-black tracking-tight animated-gradient-brand bg-clip-text text-transparent glow-text">
                   AttendanceX
-                </span>
-                <span className="hidden xs:inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                  v2.0 SaaS
                 </span>
               </div>
               <p className="text-[10px] tracking-wider uppercase font-semibold text-slate-400 hidden sm:block">
@@ -76,18 +73,6 @@ export const Navbar = ({
                   <span>{showTimetable ? 'Hide Timetable' : 'Timetable'}</span>
                 </button>
               )}
-
-              <button
-                onClick={() => {
-                  setAuthMode('login');
-                  onOpenAuth('login');
-                }}
-                className="btn-primary-glow px-4 sm:px-5 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 flex items-center gap-2 border bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-lg shadow-indigo-500/25 border-indigo-400/30 cursor-pointer"
-                title="Sign into existing account"
-              >
-                <UserCheck className="w-4 h-4 text-indigo-200" />
-                <span>Sign In</span>
-              </button>
             </div>
           ) : (
             <div className="flex items-center gap-2 sm:gap-3">

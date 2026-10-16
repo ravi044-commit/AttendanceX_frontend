@@ -101,7 +101,7 @@ export const FacultyDashboard = ({ user }) => {
       }
 
       try {
-        loadedSessions = await api.getAttendanceSessions('Computer Department');
+        loadedSessions = await api.getAttendanceSessions({ department: 'Computer Department', all: 'true' });
       } catch (err) {
         console.warn('Sessions list endpoint not ready:', err);
       }
@@ -132,10 +132,11 @@ export const FacultyDashboard = ({ user }) => {
         loadExistingAttendanceForDate(sessionDate, initialClass);
       }
 
-      if (loadedSessions && loadedSessions.length > 0) {
-        setSessionsList(loadedSessions);
+      const safeSessions = Array.isArray(loadedSessions) ? loadedSessions : (loadedSessions?.items || []);
+      if (safeSessions && safeSessions.length > 0) {
+        setSessionsList(safeSessions);
         if (!selectedHistorySession) {
-          viewSavedSession(loadedSessions[0]);
+          viewSavedSession(safeSessions[0]);
         }
       } else {
         setSessionsList([]);
@@ -189,7 +190,7 @@ export const FacultyDashboard = ({ user }) => {
 
   // Live RFID + Face Scanner Auto-Sync: automatically updates faculty roster when student scans RFID & face
   useEffect(() => {
-    if (activeTab !== 'session' || !selectedClass || !sessionDate) return;
+    if (activeTab !== 'take' || !selectedClass || !sessionDate) return;
 
     const syncInterval = setInterval(() => {
       loadExistingAttendanceForDate(sessionDate, selectedClass);
@@ -247,8 +248,29 @@ export const FacultyDashboard = ({ user }) => {
       const result = await api.markAttendance(payload);
       notify(result.message || 'Attendance saved to SQLite database successfully!');
 
-      // Refresh list and switch to history view
-      loadData();
+      const savedSessionMeta = {
+        date: sessionDate,
+        subject_name: selectedClass.subject_name,
+        session_type: sessionType,
+        marked_by: user ? user.name : 'Faculty Member',
+        department: 'Computer Department',
+        present_count: records.filter((r) => r.status === 'Present').length,
+        absent_count: records.filter((r) => r.status === 'Absent').length,
+        total_students: records.length,
+      };
+
+      // Refresh data, sync locks, and refetch query
+      await loadData();
+      await loadExistingAttendanceForDate(sessionDate, selectedClass);
+      if (sessionsQuery?.refetch) {
+        sessionsQuery.refetch();
+      }
+
+      // Pre-select saved session for instant preview
+      viewSavedSession(savedSessionMeta);
+
+      // Automatically switch to history view so faculty immediately sees the saved sheet!
+      setActiveTab('history');
     } catch (err) {
       notify(err.message || 'Failed to submit attendance', 'error');
     } finally {
@@ -293,14 +315,23 @@ export const FacultyDashboard = ({ user }) => {
   const [batchFilter, setBatchFilter] = useState('All'); // 'All', 'Batch A', 'Batch B'
   const [historyBatchFilter, setHistoryBatchFilter] = useState('All'); // 'All', 'Batch A', 'Batch B'
 
+  // Keep sessionsList synchronized whenever sessionsQuery loads fresh items
   useEffect(() => {
-    if (!selectedHistorySession) {
-      const first = (sessionsQuery.items && sessionsQuery.items[0]) || (sessionsList && sessionsList[0]);
-      if (first) {
-        viewSavedSession(first);
-      }
+    if (sessionsQuery.items && sessionsQuery.items.length > 0) {
+      setSessionsList(sessionsQuery.items);
     }
-  }, [sessionsQuery.items, sessionsList]);
+  }, [sessionsQuery.items]);
+
+  const displaySessions = (sessionsList && sessionsList.length > 0)
+    ? sessionsList
+    : (sessionsQuery.items || []);
+  const sessionsCount = Math.max(sessionsList.length, sessionsQuery.total || 0, displaySessions.length);
+
+  useEffect(() => {
+    if (!selectedHistorySession && displaySessions.length > 0) {
+      viewSavedSession(displaySessions[0]);
+    }
+  }, [displaySessions, selectedHistorySession]);
 
   const handleToggleHistoryRecordStatus = async (rec) => {
     const newStatus = rec.status === 'Present' ? 'Absent' : 'Present';
@@ -329,8 +360,10 @@ export const FacultyDashboard = ({ user }) => {
       });
 
       // Reload sessions list
-      const updatedSessions = await api.getAttendanceSessions('Computer Department');
-      setSessionsList(updatedSessions || []);
+      const updatedSessions = await api.getAttendanceSessions({ department: 'Computer Department', all: 'true' });
+      const safeUpdated = Array.isArray(updatedSessions) ? updatedSessions : (updatedSessions?.items || []);
+      setSessionsList(safeUpdated);
+      if (sessionsQuery?.refetch) sessionsQuery.refetch();
     } catch (err) {
       notify(err.message || 'Failed to update student status', 'error');
     }
@@ -506,14 +539,17 @@ export const FacultyDashboard = ({ user }) => {
         </button>
 
         <button
-          onClick={() => setActiveTab('history')}
+          onClick={() => {
+            setActiveTab('history');
+            if (sessionsQuery?.refetch) sessionsQuery.refetch();
+          }}
           className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'history'
             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
             : 'text-slate-400 hover:text-white'
             }`}
         >
           <FileText className="w-4 h-4" />
-          <span>View Saved Attendance Sheets ({loading ? '...' : sessionsList.length} Sessions)</span>
+          <span>View Saved Attendance Sheets ({loading ? '...' : sessionsCount} Sessions)</span>
         </button>
       </div>
 
@@ -796,10 +832,10 @@ export const FacultyDashboard = ({ user }) => {
 
             <div className="p-6 bg-slate-950/80 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-xs text-slate-400">
-                {sessionsList.find((s) => s.date === sessionDate) ? (
+                {displaySessions.find((s) => s.date === sessionDate) ? (
                   <span className="text-indigo-300 font-medium flex items-center gap-1.5">
                     <CheckCircle className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    Session recorded for {sessionDate} ({sessionsList.find((s) => s.date === sessionDate)?.subject_name}). You can update student statuses and save.
+                    Session recorded for {sessionDate} ({displaySessions.find((s) => s.date === sessionDate)?.subject_name}). You can update student statuses and save.
                   </span>
                 ) : (
                   <span>
@@ -814,7 +850,7 @@ export const FacultyDashboard = ({ user }) => {
                 className="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50 cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                <span>{submitting ? 'Saving to SQLite...' : sessionsList.find((s) => s.date === sessionDate) ? 'Update & Save Attendance' : 'Save & Submit Attendance'}</span>
+                <span>{submitting ? 'Saving to SQLite...' : displaySessions.find((s) => s.date === sessionDate) ? 'Update & Save Attendance' : 'Save & Submit Attendance'}</span>
               </button>
             </div>
           </div>
@@ -830,12 +866,12 @@ export const FacultyDashboard = ({ user }) => {
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-white text-base flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-indigo-400" />
-                Past Sessions ({sessionsList.length})
+                Past Sessions ({sessionsCount})
               </h3>
             </div>
 
             <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-              {sessionsQuery.isInitialLoading && sessionsList.length === 0 ? (
+              {sessionsQuery.isInitialLoading && sessionsCount === 0 ? (
                 <>
                   {[1, 2, 3, 4].map((i) => (
                     <div key={i} className="p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 space-y-2.5">
@@ -851,7 +887,7 @@ export const FacultyDashboard = ({ user }) => {
                     </div>
                   ))}
                 </>
-              ) : (sessionsQuery.items.length > 0 ? sessionsQuery.items : sessionsList).length === 0 ? (
+              ) : displaySessions.length === 0 ? (
                 <EmptyState
                   icon={FileText}
                   title="No past sessions recorded"
@@ -859,7 +895,7 @@ export const FacultyDashboard = ({ user }) => {
                 />
               ) : (
                 <>
-                  {(sessionsQuery.items.length > 0 ? sessionsQuery.items : sessionsList).map((ses, idx) => {
+                  {displaySessions.map((ses, idx) => {
                     const isSelected = selectedHistorySession &&
                       selectedHistorySession.date === ses.date &&
                       selectedHistorySession.subject_name === ses.subject_name &&

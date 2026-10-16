@@ -19,9 +19,6 @@ export const ModernFooter = () => {
                 <span className="text-xl sm:text-2xl font-black tracking-tight text-white">
                   Attendance<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-300 to-cyan-300">X</span>
                 </span>
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                  v2.0 SaaS
-                </span>
               </div>
               <p className="text-[10px] tracking-wider uppercase font-semibold text-slate-400">
                 Smart Attendance System
