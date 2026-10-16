@@ -427,9 +427,11 @@ export const api = {
     } else {
       resolvedParams = { department: departmentOrParams || 'Computer Department', ...maybeParams };
     }
-    const query = new URLSearchParams(resolvedParams).toString();
+    const { signal, ...cleanParams } = resolvedParams;
+    const query = new URLSearchParams(cleanParams).toString();
     const res = await fetchWithTimeout(`${API_BASE}/attendance/sessions-list?${query}`, {
-      headers: { ...getAuthHeaders() }
+      headers: { ...getAuthHeaders() },
+      signal
     });
     const data = await parseResponse(res, 'Failed to fetch attendance sessions');
     if (data && typeof data === 'object' && Array.isArray(data.items)) {
@@ -442,9 +444,11 @@ export const api = {
   },
 
   getAttendanceRecords: async (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const { signal, ...cleanParams } = params;
+    const query = new URLSearchParams(cleanParams).toString();
     const res = await fetchWithTimeout(`${API_BASE}/attendance/records?${query}`, {
-      headers: { ...getAuthHeaders() }
+      headers: { ...getAuthHeaders() },
+      signal
     });
     const data = await parseResponse(res, 'Failed to fetch attendance records');
     if (data && typeof data === 'object' && Array.isArray(data.items)) {

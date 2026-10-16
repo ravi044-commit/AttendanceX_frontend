@@ -19,8 +19,11 @@ import {
   EmptyState
 } from './Skeleton';
 
+const EMPTY_QUERY_PARAMS = Object.freeze({});
+
 export const FacultyDashboard = ({ user }) => {
   const [activeTab, setActiveTab] = useState('take'); // 'take' or 'history'
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -139,7 +142,21 @@ export const FacultyDashboard = ({ user }) => {
           viewSavedSession(safeSessions[0]);
         }
       } else {
-        setSessionsList([]);
+        // Fallback: try loading all sessions without department filter if dept was null/different
+        try {
+          const fallbackSessions = await api.getAttendanceSessions({ all: 'true' });
+          const safeFallback = Array.isArray(fallbackSessions) ? fallbackSessions : (fallbackSessions?.items || []);
+          if (safeFallback.length > 0) {
+            setSessionsList(safeFallback);
+            if (!selectedHistorySession) {
+              viewSavedSession(safeFallback[0]);
+            }
+          } else {
+            setSessionsList([]);
+          }
+        } catch {
+          setSessionsList([]);
+        }
       }
 
       clearTimeout(wakeupTimer);
@@ -299,6 +316,28 @@ export const FacultyDashboard = ({ user }) => {
     }
   };
 
+  const fetchSessionsHistory = async () => {
+    setSessionsLoading(true);
+    try {
+      let res = await api.getAttendanceSessions({ department: 'Computer Department', all: 'true' });
+      let safe = Array.isArray(res) ? res : (res?.items || []);
+      if (safe.length === 0) {
+        res = await api.getAttendanceSessions({ all: 'true' });
+        safe = Array.isArray(res) ? res : (res?.items || []);
+      }
+      if (safe.length > 0) {
+        setSessionsList(safe);
+        if (!selectedHistorySession) {
+          viewSavedSession(safe[0]);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load past sessions:', e);
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
   const sessionsQuery = useInfiniteList(
     useCallback(
       (params) =>
@@ -308,12 +347,19 @@ export const FacultyDashboard = ({ user }) => {
         }),
       []
     ),
-    {},
+    EMPTY_QUERY_PARAMS,
     { limit: 20, enabled: activeTab === 'history' }
   );
 
   const [batchFilter, setBatchFilter] = useState('All'); // 'All', 'Batch A', 'Batch B'
   const [historyBatchFilter, setHistoryBatchFilter] = useState('All'); // 'All', 'Batch A', 'Batch B'
+
+  // Automatically ensure history sessions are loaded when user visits History tab
+  useEffect(() => {
+    if (activeTab === 'history' && sessionsList.length === 0 && !sessionsLoading) {
+      fetchSessionsHistory();
+    }
+  }, [activeTab]);
 
   // Keep sessionsList synchronized whenever sessionsQuery loads fresh items
   useEffect(() => {
@@ -541,7 +587,9 @@ export const FacultyDashboard = ({ user }) => {
         <button
           onClick={() => {
             setActiveTab('history');
-            if (sessionsQuery?.refetch) sessionsQuery.refetch();
+            if (sessionsList.length === 0) {
+              fetchSessionsHistory();
+            }
           }}
           className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'history'
             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
@@ -871,7 +919,7 @@ export const FacultyDashboard = ({ user }) => {
             </div>
 
             <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-              {sessionsQuery.isInitialLoading && sessionsCount === 0 ? (
+              {(sessionsLoading || ((sessionsQuery.loading || sessionsQuery.isInitialLoading) && displaySessions.length === 0)) ? (
                 <>
                   {[1, 2, 3, 4].map((i) => (
                     <div key={i} className="p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 space-y-2.5">
@@ -887,6 +935,20 @@ export const FacultyDashboard = ({ user }) => {
                     </div>
                   ))}
                 </>
+              ) : (sessionsQuery.error && displaySessions.length === 0) ? (
+                <div className="p-4 rounded-xl border border-rose-500/20 bg-rose-950/20 text-center space-y-3">
+                  <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
+                  <p className="text-xs text-rose-300 font-semibold">{sessionsQuery.error}</p>
+                  <button
+                    onClick={() => {
+                      fetchSessionsHistory();
+                      if (sessionsQuery.refetch) sessionsQuery.refetch();
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all cursor-pointer"
+                  >
+                    Retry Loading Sessions
+                  </button>
+                </div>
               ) : displaySessions.length === 0 ? (
                 <EmptyState
                   icon={FileText}

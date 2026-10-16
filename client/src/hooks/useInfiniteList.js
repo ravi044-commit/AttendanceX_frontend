@@ -30,6 +30,7 @@ export const useInfiniteList = (fetcher, params = {}, options = {}) => {
 
   // Debounced params tracking
   const [debouncedParams, setDebouncedParams] = useState(params);
+  const prevParamsRef = useRef(params);
   const debounceTimerRef = useRef(null);
   const abortControllerRef = useRef(null);
   const isMountedRef = useRef(true);
@@ -37,15 +38,16 @@ export const useInfiniteList = (fetcher, params = {}, options = {}) => {
 
   // 400ms debounce on search inputs and filter changes
   useEffect(() => {
+    const isSame = JSON.stringify(prevParamsRef.current) === JSON.stringify(params);
+    if (isSame) return;
+    prevParamsRef.current = params;
+
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
 
     debounceTimerRef.current = setTimeout(() => {
-      setDebouncedParams((prev) => {
-        const isSame = JSON.stringify(prev) === JSON.stringify(params);
-        return isSame ? prev : params;
-      });
+      setDebouncedParams(params);
     }, debounceMs);
 
     return () => {
@@ -264,6 +266,8 @@ export const useInfiniteList = (fetcher, params = {}, options = {}) => {
     hasMore,
     loading,
     loadingMore,
+    isInitialLoading: loading && page === 1 && items.length === 0,
+    isLoadingMore: loadingMore,
     error,
     loadMore,
     refetch,
