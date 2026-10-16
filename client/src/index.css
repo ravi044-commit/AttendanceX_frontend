@@ -399,3 +399,27 @@ button[type="submit"],
 button[type="submit"] * {
   color: #ffffff !important;
 }
+
+/* ─── AttendanceX Navigation Drawer Styles ────────────────────────────────── */
+#navigation-drawer {
+  background-color: #0B0D22 !important;
+  color: #F8FAFC !important;
+}
+
+#navigation-drawer ::-webkit-scrollbar {
+  width: 5px;
+}
+
+#navigation-drawer ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#navigation-drawer ::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.25);
+  border-radius: 9999px;
+}
+
+#navigation-drawer ::-webkit-scrollbar-thumb:hover {
+  background: rgba(167, 139, 250, 0.5);
+}
+

@@ -5,7 +5,8 @@ import { ModernFooter } from './components/ModernFooter';
 import {
   Shield, GraduationCap, BookOpen, Crown, Sparkles,
   ArrowRight, CheckCircle2,
-  LogIn, Calendar, Layers
+  LogIn, Calendar, Layers,
+  Mail, Code2, ExternalLink, Send, Copy, Check
 } from 'lucide-react';
 
 // Code-split pages and modals so users only download their respective role bundles
@@ -58,6 +59,17 @@ export default function App() {
   const [authRole, setAuthRole] = useState('student'); // 'admin', 'student', 'faculty', 'hod'
   const [activeRoleView, setActiveRoleView] = useState('admin'); // For Admin view switching
   const [showTimetable, setShowTimetable] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
+
+  const handleCopyEmail = () => {
+    try {
+      navigator.clipboard.writeText('ravilaptop978@gmail.com');
+      setCopiedEmail(true);
+      setTimeout(() => setCopiedEmail(false), 2200);
+    } catch (err) {
+      console.error('Failed to copy email:', err);
+    }
+  };
 
   // Permanently enforce sleek dark theme and warm up backend if it is sleeping on a cloud host
   useEffect(() => {
@@ -358,6 +370,273 @@ export default function App() {
                 </Suspense>
               </div>
             )}
+
+            {/* ABOUT US SECTION */}
+            <section id="about" className="space-y-8 pt-8 scroll-mt-24" aria-label="About AttendanceX">
+              <div className="text-center max-w-3xl mx-auto space-y-3">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold tracking-wide uppercase">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>About AttendanceX</span>
+                </div>
+                <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+                  Smart Campus Management Platform
+                </h2>
+                <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl mx-auto">
+                  AttendanceX is a smart campus management platform that helps students, faculty, HODs, and administrators manage attendance and campus activities easily with real-time academic precision and automated compliance.
+                </p>
+              </div>
+
+              {/* 4 Pillars Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                {[
+                  {
+                    role: 'Students',
+                    desc: 'Track live semester percentages, review lecture and lab batch sessions, and stay compliant with university exam eligibility rules.',
+                    icon: GraduationCap,
+                    accent: 'from-emerald-500/15 to-transparent',
+                    border: 'border-emerald-500/30',
+                    text: 'text-emerald-400'
+                  },
+                  {
+                    role: 'Faculty',
+                    desc: 'Perform instant roll calls for lectures and practical lab batches with real-time tally counts and zero paper friction.',
+                    icon: BookOpen,
+                    accent: 'from-blue-500/15 to-transparent',
+                    border: 'border-blue-500/30',
+                    text: 'text-blue-400'
+                  },
+                  {
+                    role: 'HODs',
+                    desc: 'Audit departmental performance, receive automated low-attendance defaulter warnings, and verify lecture rosters.',
+                    icon: Crown,
+                    accent: 'from-purple-500/15 to-transparent',
+                    border: 'border-purple-500/30',
+                    text: 'text-purple-400'
+                  },
+                  {
+                    role: 'Administrators',
+                    desc: 'Centralize user credentials, enforce strict role-based access control, and manage persistent database directories.',
+                    icon: Shield,
+                    accent: 'from-amber-500/15 to-transparent',
+                    border: 'border-amber-500/30',
+                    text: 'text-amber-400'
+                  }
+                ].map((item, idx) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={idx}
+                      className={`glass-card p-6 rounded-3xl border ${item.border} bg-gradient-to-b ${item.accent} flex flex-col justify-between hover:shadow-xl transition-all duration-300`}
+                    >
+                      <div>
+                        <div className={`w-11 h-11 rounded-2xl bg-slate-900/90 border border-slate-700/60 flex items-center justify-center ${item.text} mb-4 shadow-sm`}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-lg font-bold text-white mb-2">
+                          For {item.role}
+                        </h3>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          {item.desc}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* CONTACT US SECTION */}
+            <section id="contact" className="space-y-6 pt-6 pb-4 scroll-mt-24" aria-label="Contact AttendanceX">
+              <div className="glass-panel p-6 sm:p-10 rounded-3xl border border-indigo-500/30 bg-gradient-to-br from-[#0B0D22]/95 via-[#111432]/75 to-[#070A18]/95 shadow-2xl relative overflow-hidden">
+                {/* Ambient glow accent */}
+                <div className="absolute top-0 right-0 -mr-20 -mt-20 w-72 h-72 rounded-full bg-indigo-600/15 blur-3xl pointer-events-none" />
+
+                <div className="relative z-10 max-w-3xl mx-auto text-center space-y-6">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs font-semibold tracking-wide uppercase">
+                    <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Get in Touch</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+                      Contact Us
+                    </h2>
+                    <p className="text-sm sm:text-base text-slate-300 max-w-xl mx-auto leading-relaxed">
+                      Have questions regarding the platform, architecture, technical support, or academic integration? Reach out directly via your favorite email service.
+                    </p>
+                  </div>
+
+                  {/* Developer Profile Header Card */}
+                  <div className="pt-2">
+                    <div className="inline-flex flex-col sm:flex-row items-center gap-4 p-4 sm:p-5 rounded-2xl bg-[#070A18]/90 border border-indigo-500/30 shadow-lg hover:border-indigo-500/60 transition-all w-full max-w-2xl mx-auto justify-between">
+                      <div className="flex items-center gap-3.5 text-center sm:text-left flex-col sm:flex-row">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/30 shrink-0">
+                          <Code2 className="w-6 h-6" />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-white">
+                              Direct Developer Channel
+                            </span>
+                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                              AttendanceX Developer
+                            </span>
+                          </div>
+
+                          <div className="mt-1 flex items-center justify-center sm:justify-start gap-2">
+                            <Mail className="w-4 h-4 text-indigo-400 shrink-0" />
+                            <a
+                              href="mailto:ravilaptop978@gmail.com"
+                              className="text-sm font-semibold text-indigo-300 hover:text-white underline underline-offset-4 decoration-indigo-400/50 hover:decoration-white transition-all flex items-center gap-1.5 cursor-pointer"
+                              title="Send email to AttendanceX Developer"
+                            >
+                              <span>ravilaptop978@gmail.com</span>
+                              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Copy Address Shortcut */}
+                      <button
+                        type="button"
+                        onClick={handleCopyEmail}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 border ${
+                          copiedEmail
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                            : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700/80 hover:border-indigo-500/40'
+                        }`}
+                        title="Copy email address to clipboard"
+                      >
+                        {copiedEmail ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>Copy Address</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* CHOOSE EMAIL SOFTWARE / WEBMAIL CLIENT */}
+                  <div className="pt-4 space-y-3 max-w-2xl mx-auto">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-center gap-2">
+                      <span className="h-px w-8 bg-slate-800" />
+                      <span>Choose Your Preferred Mail Software</span>
+                      <span className="h-px w-8 bg-slate-800" />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-left">
+                      {/* 1. Gmail Web */}
+                      <a
+                        href="https://mail.google.com/mail/?view=cm&fs=1&to=ravilaptop978@gmail.com&su=AttendanceX%20Platform%20Inquiry"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-center justify-between p-3.5 rounded-2xl bg-[#070A18]/80 hover:bg-[#111432] border border-slate-800 hover:border-indigo-500/40 transition-all shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/25 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg className="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.268H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L12 9.5l8.073-6.007C21.69 2.28 24 3.434 24 5.457z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
+                              Gmail Web
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              Open directly in Google Chrome / Browser
+                            </div>
+                          </div>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition-colors" />
+                      </a>
+
+                      {/* 2. Outlook / Hotmail Web */}
+                      <a
+                        href="https://outlook.live.com/mail/0/deeplink/compose?to=ravilaptop978@gmail.com&subject=AttendanceX%20Platform%20Inquiry"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-center justify-between p-3.5 rounded-2xl bg-[#070A18]/80 hover:bg-[#111432] border border-slate-800 hover:border-indigo-500/40 transition-all shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg className="w-4 h-4 text-sky-400" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M24 11.25V5.5a1.5 1.5 0 0 0-1.5-1.5H10v7.25h14zm-14 1.5V20h12.5a1.5 1.5 0 0 0 1.5-1.5v-5.75H10zM8.5 4H1.5A1.5 1.5 0 0 0 0 5.5v13A1.5 1.5 0 0 0 1.5 20h7V4z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
+                              Outlook / Hotmail
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              Open in Microsoft Webmail
+                            </div>
+                          </div>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition-colors" />
+                      </a>
+
+                      {/* 3. Yahoo Mail Web */}
+                      <a
+                        href="https://compose.mail.yahoo.com/?to=ravilaptop978@gmail.com&subj=AttendanceX%20Platform%20Inquiry"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-center justify-between p-3.5 rounded-2xl bg-[#070A18]/80 hover:bg-[#111432] border border-slate-800 hover:border-indigo-500/40 transition-all shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/25 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M12 0c6.627 0 12 5.373 12 12s-5.373 12-12 12S0 18.627 0 12 5.373 0 12 0zm3.328 6.5h-2.433l-2.024 5.253-2.024-5.253H6.414l3.193 7.426v3.574h2.152v-3.574L15.328 6.5z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
+                              Yahoo Mail
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              Compose via Yahoo Mail web client
+                            </div>
+                          </div>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition-colors" />
+                      </a>
+
+                      {/* 4. Default System Mail Client (Mailto) */}
+                      <a
+                        href="mailto:ravilaptop978@gmail.com?subject=AttendanceX%20Platform%20Inquiry"
+                        className="group flex items-center justify-between p-3.5 rounded-2xl bg-[#070A18]/80 hover:bg-[#111432] border border-slate-800 hover:border-indigo-500/40 transition-all shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <Send className="w-4 h-4 text-indigo-400" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
+                              Default Email App
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              Windows Mail, Apple Mail, Thunderbird
+                            </div>
+                          </div>
+                        </div>
+                        <Send className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition-colors" />
+                      </a>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-400 pt-2">
+                    Direct developer correspondence for Computer Department system administration.
+                  </p>
+                </div>
+              </div>
+            </section>
 
           </div>
         ) : (

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Users, LogOut, Sparkles, Calendar, Shield, BookOpen, GraduationCap, Crown, ShieldCheck } from 'lucide-react';
 import { cleanAvatarUrl } from '../utils/avatarUtils';
+import { NavigationDrawer } from './NavigationDrawer';
 
 export const Navbar = ({
   user,
@@ -14,18 +15,49 @@ export const Navbar = ({
   showTimetable,
   onOpenSecurity
 }) => {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-2xl transition-all">
+    <>
+      <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-2xl transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
         
-        {/* BRAND LOGO & TITLE */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* BRAND LOGO & HAMBURGER (TOP-LEFT) */}
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          {/* Hamburger Menu Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsDrawerOpen((prev) => !prev)}
+            aria-label={isDrawerOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={isDrawerOpen}
+            aria-controls="navigation-drawer"
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-200 hover:text-[#A78BFA] bg-slate-900/70 hover:bg-[#8B5CF6]/15 border border-slate-800/80 hover:border-[rgba(139,92,246,0.35)] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B5CF6] cursor-pointer group shrink-0 shadow-sm hover:shadow-[0_0_12px_rgba(139,92,246,0.2)]"
+          >
+            <span className="relative w-5 h-4 flex flex-col justify-between pointer-events-none">
+              <span
+                className={`block h-0.5 w-full bg-current rounded-full transition-transform duration-300 ease-in-out origin-center ${
+                  isDrawerOpen ? 'translate-y-[7px] rotate-45' : ''
+                }`}
+              />
+              <span
+                className={`block h-0.5 w-full bg-current rounded-full transition-all duration-200 ease-in-out ${
+                  isDrawerOpen ? 'opacity-0 scale-x-0' : 'opacity-100'
+                }`}
+              />
+              <span
+                className={`block h-0.5 w-full bg-current rounded-full transition-transform duration-300 ease-in-out origin-center ${
+                  isDrawerOpen ? '-translate-y-[7px] -rotate-45' : ''
+                }`}
+              />
+            </span>
+          </button>
+
           <a
             href="/"
-            className="flex items-center gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-xl"
+            className="flex items-center gap-2.5 sm:gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-xl"
             title="AttendanceX Smart Campus Platform"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 group-hover:scale-105 transition-transform">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 group-hover:scale-105 transition-transform shrink-0">
               <Users className="w-5 h-5 text-white" />
             </div>
             
@@ -180,5 +212,18 @@ export const Navbar = ({
 
       </div>
     </header>
+
+    {/* Slide-out Navigation Drawer */}
+    <NavigationDrawer
+      isOpen={isDrawerOpen}
+      onClose={() => setIsDrawerOpen(false)}
+      user={user}
+      onOpenAuth={onOpenAuth}
+      onLogout={onLogout}
+      onToggleTimetable={onToggleTimetable}
+      showTimetable={showTimetable}
+      onOpenSecurity={onOpenSecurity}
+    />
+  </>
   );
 };
