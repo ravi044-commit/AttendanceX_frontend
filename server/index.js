@@ -34,14 +34,6 @@ import {
 
 dotenv.config();
 
-export function getFaceDbPath() {
-  const envPath = process.env.FACE_DB_PATH;
-  if (!envPath) {
-    return path.resolve(__dirname, 'face_db');
-  }
-  return path.isAbsolute(envPath) ? envPath : path.resolve(__dirname, envPath);
-}
-
 export const getFacultyInCharge = (subjectName) => {
   if (!subjectName) return 'Faculty Member';
   const name = subjectName.toUpperCase();
@@ -235,12 +227,6 @@ const handleHealthCheck = async (req, res) => {
 
 app.get('/api/health', handleHealthCheck);
 app.get('/health', handleHealthCheck);
-
-// Robots.txt
-app.get('/robots.txt', (req, res) => {
-  res.type('text/plain');
-  res.send(`# AttendanceX Robots Exclusion Standard\nUser-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /hod\nDisallow: /faculty\n\nHost: attendancex.edu\n`);
-});
 
 /* ==========================================================================
    AUTH ROUTES
@@ -657,7 +643,7 @@ app.get('/api/auth/google/status', authenticateToken, async (req, res) => {
 // 1. Send / Resend OTP
 app.post('/api/auth/otp/send', async (req, res) => {
   try {
-    const { email, purpose, password } = req.body;
+    const { email, purpose } = req.body;
 
     if (!email || !purpose) {
       return res.status(400).json({ error: 'Email and purpose are required' });
@@ -696,17 +682,11 @@ app.post('/api/auth/otp/send', async (req, res) => {
       }
     }
 
-    const result = await requestOtp({ email, purpose, userId, password, requirePasswordCheck: false });
+    const result = await requestOtp({ email, purpose, userId });
     // Secure response: Never exposes OTP
     res.json(result);
   } catch (error) {
     const msg = error.message || 'Failed to process verification code request';
-    if (msg.includes('Incorrect AttendanceX password')) {
-      return res.status(401).json({ error: msg });
-    }
-    if (msg.includes('AttendanceX password is required') || msg.includes('Please enter your AttendanceX password')) {
-      return res.status(400).json({ error: msg });
-    }
     if (msg.includes('wait') && msg.includes('seconds')) {
       return res.status(429).json({ error: msg });
     }
@@ -805,7 +785,7 @@ app.post('/api/auth/otp/verify-email-change', async (req, res) => {
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
         userId = decoded.id;
-      } catch {}
+      } catch { }
     }
 
     if (!userId && (currentEmail || uid)) {
@@ -968,23 +948,14 @@ app.get('/api/students', authenticateToken, async (req, res) => {
     }
 
     const students = await allQuery(sql, queryParams);
-
-    const userEmails = await allQuery('SELECT uid, id, email, phone FROM users');
-    const userMap = {};
-    userEmails.forEach((u) => {
-      if (u.uid) userMap[u.uid] = u;
-      if (u.id) userMap[u.id] = u;
-    });
-
     const baseDir = getFaceDbPath();
 
     const formatted = students.map((s) => {
-      const tot = Math.max(s.total_classes_conducted || 0, (s.lecture_total || 0) + (s.lab_total || 0), 1);
-      const pres = Math.min(s.total_classes_present || (s.lecture_present + s.lab_present) || 0, tot);
-      const calculatedPct = calculatePercentage(pres, tot);
-      const pct = Math.min(s.percentage !== undefined && s.percentage !== null ? s.percentage : calculatedPct, 95);
+      const tot = s.total_classes_conducted || (s.lecture_total + s.lab_total) || 0;
+      const pres = s.total_classes_present || (s.lecture_present + s.lab_present) || 0;
+      const pct = calculatePercentage(pres, tot);
       const ratio = tot > 0 ? pres / tot : 0;
-      const weighted = calculateWeightedScore(Math.min(ratio, 0.95));
+      const weighted = calculateWeightedScore(ratio);
 
       let photo = s.student_photo;
       if (!photo || photo.includes('dicebear')) {
@@ -994,14 +965,8 @@ app.get('/api/students', authenticateToken, async (req, res) => {
         }
       }
 
-      const uInfo = userMap[s.uid] || (s.user_id ? userMap[s.user_id] : null);
-      const email = uInfo?.email || (s.enrolment_number ? `${s.enrolment_number}@attendancex.edu` : '');
-      const phone = uInfo?.phone || '';
-
       return {
         ...s,
-        email,
-        phone,
         student_photo: photo,
         percentage: pct,
         weighted_percentage: weighted
@@ -1199,23 +1164,16 @@ app.get('/api/students/:uid', authenticateToken, async (req, res) => {
       LIMIT 100
     `, [uid]);
 
-    const total = Math.max(student.total_classes_conducted || (student.lecture_total + student.lab_total) || 0, 1);
-    const present = Math.min(student.total_classes_present || (student.lecture_present + student.lab_present) || 0, total);
-    const calculatedPct = calculatePercentage(present, total);
-    const percentage = Math.min(student.percentage !== undefined && student.percentage !== null ? student.percentage : calculatedPct, 95);
-    const weighted_percentage = calculateWeightedScore(Math.min(total > 0 ? present / total : 0, 0.95));
+    const total = student.total_classes_conducted || (student.lecture_total + student.lab_total) || 0;
+    const present = student.total_classes_present || (student.lecture_present + student.lab_present) || 0;
+    const percentage = calculatePercentage(present, total);
+    const weighted_percentage = calculateWeightedScore(total > 0 ? present / total : 0);
 
     // Compute subject-wise attendance breakdown
     const subjectAttendance = await computeSubjectAttendance(uid, student);
 
-    const userRow = await getQuery('SELECT email, phone FROM users WHERE uid = ? OR id = ?', [uid, student.user_id]);
-    const email = userRow?.email || (student.enrolment_number ? `${student.enrolment_number}@attendancex.edu` : '');
-    const phone = userRow?.phone || '';
-
     res.json({
       ...student,
-      email,
-      phone,
       percentage,
       weighted_percentage,
       attendance_history: history,
@@ -1314,8 +1272,6 @@ app.post('/api/students', authenticateToken, requireRole('admin', 'hod'), async 
     const photo = student_photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
     const studentEmail = email || `${name.toLowerCase().replace(/\s+/g, '.')}.comp@attendancex.edu`;
 
-    const studentStatus = status === 'Detained' ? 'Detained' : 'Active';
-
     // Create user account for student
     const hashedPassword = await bcrypt.hash('Student@123', 10);
     const userRes = await runQuery(`
@@ -1331,7 +1287,7 @@ app.post('/api/students', authenticateToken, requireRole('admin', 'hod'), async 
         lab_present, lab_total
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0)
-    `, [uid, userRes.id, name, enrolment_number, photo, dept, semester || 6, division || 'A', studentStatus]);
+    `, [uid, userRes.id, name, enrolment_number, photo, dept, semester || 6, division || 'A', status || 'Active']);
 
     const newStudent = await getQuery('SELECT * FROM students WHERE uid = ?', [uid]);
     res.status(201).json(newStudent);
@@ -1342,11 +1298,10 @@ app.post('/api/students', authenticateToken, requireRole('admin', 'hod'), async 
 });
 
 // Update student
-app.put('/api/students/:uid', authenticateToken, requireRole('admin', 'hod', 'faculty'), async (req, res) => {
+app.put('/api/students/:uid', authenticateToken, requireRole('admin', 'hod'), async (req, res) => {
   try {
     const { uid } = req.params;
-    const { name, email, enrolment_number, student_photo, department, status, semester, division, phone } = req.body;
-    const sanitizedStatus = status !== undefined && status !== null ? (status === 'Detained' ? 'Detained' : 'Active') : null;
+    const { name, enrolment_number, student_photo, department, status, semester, division } = req.body;
 
     let existingStudent = await getQuery('SELECT * FROM students WHERE uid = ?', [uid]);
 
@@ -1370,7 +1325,7 @@ app.put('/api/students/:uid', authenticateToken, requireRole('admin', 'hod', 'fa
           enroll,
           student_photo || user.avatar || '',
           department || user.department || 'Computer Department',
-          sanitizedStatus || 'Active',
+          status || 'Active',
           semester || 5,
           division || 'A'
         ]);
@@ -1387,22 +1342,7 @@ app.put('/api/students/:uid', authenticateToken, requireRole('admin', 'hod', 'fa
             semester = COALESCE(?, semester),
             division = COALESCE(?, division)
         WHERE uid = ?
-      `, [name, enrolment_number, student_photo, department, sanitizedStatus, semester, division, uid]);
-    }
-
-    // Update email in users table if provided
-    if (email && email.trim()) {
-      const cleanEmail = email.trim().toLowerCase();
-      const conflict = await getQuery('SELECT id FROM users WHERE email = ? AND uid != ?', [cleanEmail, uid]);
-      if (conflict) {
-        return res.status(400).json({ error: 'Email address is already in use by another user' });
-      }
-      await runQuery(`
-        UPDATE users
-        SET email = ?,
-            phone = COALESCE(?, phone)
-        WHERE uid = ? OR id = ?
-      `, [cleanEmail, phone, uid, existingStudent?.user_id]);
+      `, [name, enrolment_number, student_photo, department, status, semester, division, uid]);
     }
 
     // Also update users table name/photo/department if present
@@ -1419,40 +1359,10 @@ app.put('/api/students/:uid', authenticateToken, requireRole('admin', 'hod', 'fa
       return res.status(404).json({ error: `Student with UID '${uid}' not found in database` });
     }
 
-    const updatedUser = await getQuery('SELECT email, phone FROM users WHERE uid = ? OR id = ?', [uid, updated.user_id]);
-
-    res.json({
-      ...updated,
-      email: updatedUser?.email || email || '',
-      phone: updatedUser?.phone || phone || ''
-    });
+    res.json(updated);
   } catch (error) {
     console.error('Update student error:', error);
     res.status(500).json({ error: 'Failed to update student: ' + error.message });
-  }
-});
-
-// Update any user/student email
-app.put('/api/users/:uidOrId/email', authenticateToken, requireRole('admin', 'hod', 'faculty'), async (req, res) => {
-  try {
-    const { uidOrId } = req.params;
-    const { email } = req.body;
-    if (!email || !email.includes('@')) {
-      return res.status(400).json({ error: 'A valid email address is required' });
-    }
-    const cleanEmail = email.trim().toLowerCase();
-
-    // Check if email already exists for another user
-    const conflict = await getQuery('SELECT id, uid FROM users WHERE email = ? AND uid != ? AND id != ?', [cleanEmail, uidOrId, uidOrId]);
-    if (conflict) {
-      return res.status(400).json({ error: 'Email address is already registered to another account' });
-    }
-
-    await runQuery('UPDATE users SET email = ? WHERE uid = ? OR id = ?', [cleanEmail, uidOrId, uidOrId]);
-    res.json({ success: true, message: 'Email address updated successfully', email: cleanEmail });
-  } catch (error) {
-    console.error('Update user email error:', error);
-    res.status(500).json({ error: 'Failed to update email: ' + error.message });
   }
 });
 
@@ -1693,15 +1603,11 @@ app.post('/api/attendance/mark', authenticateToken, requireRole('faculty', 'hod'
       return res.status(400).json({ error: 'Missing required attendance payload' });
     }
 
-    // Register attendance update and respect HOD freeze lock
+    // Register attendance update
     const lock = await getQuery(
       'SELECT * FROM attendance_locks WHERE date = ? AND department = ?',
       [date, department]
     );
-
-    if (lock && lock.is_frozen === 1) {
-      return res.status(403).json({ error: `Attendance for date ${date} has been FINALIZED and FROZEN by the HOD. It cannot be modified.` });
-    }
 
     // Begin atomic SQLite transaction to protect concurrency and data integrity
     await runQuery('BEGIN TRANSACTION');
@@ -2104,16 +2010,20 @@ app.post('/api/attendance/freeze', authenticateToken, requireRole('hod', 'admin'
       [date, department]
     );
 
+    // Calculate next morning session date (date + 1 day)
+    const nextSessionDate = computeNextDay(date);
+
     // Mark or insert attendance_locks as frozen
     await runQuery(`
-      INSERT INTO attendance_locks (date, department, status, is_frozen, finalized_by, finalized_at)
-      VALUES (?, ?, 'Finalized', 1, ?, CURRENT_TIMESTAMP)
+      INSERT INTO attendance_locks (date, department, status, is_frozen, finalized_by, finalized_at, next_session_date)
+      VALUES (?, ?, 'Finalized', 1, ?, CURRENT_TIMESTAMP, ?)
       ON CONFLICT(date, department) DO UPDATE SET
         status = 'Finalized',
         is_frozen = 1,
         finalized_by = excluded.finalized_by,
-        finalized_at = CURRENT_TIMESTAMP
-    `, [date, department, finalized_by]);
+        finalized_at = CURRENT_TIMESTAMP,
+        next_session_date = excluded.next_session_date
+    `, [date, department, finalized_by, nextSessionDate]);
 
     // Mark all existing attendance records for that date as frozen
     await runQuery(`
@@ -2122,14 +2032,20 @@ app.post('/api/attendance/freeze', authenticateToken, requireRole('hod', 'admin'
       WHERE date = ? AND department = ?
     `, [date, department]);
 
+    // Automatically create next morning's session as Open
+    await runQuery(`
+      INSERT OR IGNORE INTO attendance_locks (date, department, status, is_frozen)
+      VALUES (?, ?, 'Open', 0)
+    `, [nextSessionDate, department]);
+
     res.json({
-      message: `Attendance for ${date} successfully finalized and frozen. Records are permanently archived in SQLite.`,
+      message: `Attendance for ${date} successfully finalized and frozen. No changes can be made by faculty or admin. Next session scheduled for ${nextSessionDate} morning.`,
       date,
       is_frozen: 1,
       status: 'Finalized',
       finalized_by,
       finalized_at: new Date().toISOString(),
-      next_session_date: null,
+      next_session_date: nextSessionDate,
       total_records_frozen: recordCount ? recordCount.count : 0
     });
   } catch (error) {
@@ -2261,33 +2177,10 @@ app.get('/api/attendance/lock-status', authenticateToken, async (req, res) => {
 app.get('/api/attendance/all-locks', authenticateToken, requireRole('hod', 'admin'), async (req, res) => {
   try {
     const { department = 'Computer Department' } = req.query;
-
-    // Ensure all dates where attendance was recorded exist in attendance_locks as Open if not yet created
-    await runQuery(`
-      INSERT OR IGNORE INTO attendance_locks (date, department, status, is_frozen)
-      SELECT DISTINCT date, department, 'Open', 0
-      FROM attendance_records
-      WHERE department = ?
-    `, [department]);
-
-    const locks = await allQuery(`
-      SELECT 
-        l.*,
-        COALESCE(r.total_records, 0) as total_records,
-        COALESCE(r.present_count, 0) as present_count
-      FROM attendance_locks l
-      LEFT JOIN (
-        SELECT date, department, 
-               COUNT(*) as total_records,
-               COUNT(DISTINCT CASE WHEN status = 'Present' THEN student_uid END) as present_count
-        FROM attendance_records
-        WHERE department = ?
-        GROUP BY date, department
-      ) r ON r.date = l.date AND r.department = l.department
-      WHERE l.department = ?
-      ORDER BY l.date DESC
-    `, [department, department]);
-
+    const locks = await allQuery(
+      'SELECT * FROM attendance_locks WHERE department = ? ORDER BY date DESC',
+      [department]
+    );
     res.json(locks);
   } catch (error) {
     console.error('All locks error:', error);
@@ -2311,9 +2204,9 @@ app.get('/api/attendance/summary', authenticateToken, async (req, res) => {
     let lowAttendanceCount = 0;
 
     students.forEach((s) => {
-      const total = Math.max((s.lecture_total + s.lab_total) || 1, (s.lecture_present + s.lab_present) || 0);
-      const present = Math.min((s.lecture_present + s.lab_present) || 0, total);
-      const pct = Math.min(calculatePercentage(present, total), 95);
+      const total = (s.lecture_total + s.lab_total) || 1;
+      const present = (s.lecture_present + s.lab_present) || 0;
+      const pct = (present / total) * 100;
       sumPercentages += pct;
       if (pct < 75) lowAttendanceCount++;
 
@@ -2366,13 +2259,8 @@ app.get('/api/attendance/sessions-list', authenticateToken, async (req, res) => 
     const { department = 'Computer Department', search, date, session_type, all } = req.query;
     const { page, limit, offset } = parsePagination(req.query);
 
-    const whereClauses = [];
-    const params = [];
-
-    if (department && department !== 'All') {
-      whereClauses.push('department = ?');
-      params.push(department);
-    }
+    const whereClauses = ['department = ?'];
+    const params = [department];
 
     if (date) {
       whereClauses.push('date = ?');
@@ -2388,9 +2276,9 @@ app.get('/api/attendance/sessions-list', authenticateToken, async (req, res) => 
       params.push(term, term);
     }
 
-    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const whereSql = `WHERE ${whereClauses.join(' AND ')}`;
 
-    // Count distinct sessions strictly by date
+    // Count distinct sessions (strictly 1 session per date)
     const countRow = await getQuery(`
       SELECT COUNT(DISTINCT date) as total FROM attendance_records
       ${whereSql}
@@ -2399,22 +2287,39 @@ app.get('/api/attendance/sessions-list', authenticateToken, async (req, res) => 
 
     let sql = `
       SELECT 
-        date, 
-        subject_name, 
-        session_type, 
-        marked_by,
-        department,
-        COUNT(CASE WHEN status = 'Present' THEN 1 END) as present_count,
-        COUNT(CASE WHEN status = 'Absent' THEN 1 END) as absent_count,
-        COUNT(*) as total_students,
-        MAX(timestamp) as last_marked
-      FROM attendance_records
-      ${whereSql}
-      GROUP BY date, department
-      ORDER BY date DESC
+        s.date, 
+        s.subject_name, 
+        s.session_type, 
+        s.marked_by,
+        s.present_count,
+        s.absent_count,
+        s.total_students,
+        s.last_marked
+      FROM (
+        SELECT 
+          date, 
+          subject_name, 
+          session_type, 
+          marked_by,
+          COUNT(CASE WHEN status = 'Present' THEN 1 END) as present_count,
+          COUNT(CASE WHEN status = 'Absent' THEN 1 END) as absent_count,
+          COUNT(*) as total_students,
+          MAX(id) as max_rec_id,
+          MAX(timestamp) as last_marked
+        FROM attendance_records
+        ${whereSql}
+        GROUP BY date, subject_name, session_type, marked_by
+      ) s
+      INNER JOIN (
+        SELECT date, MAX(id) as latest_id
+        FROM attendance_records
+        ${whereSql}
+        GROUP BY date
+      ) latest_d ON s.date = latest_d.date AND s.max_rec_id = latest_d.latest_id
+      ORDER BY s.date DESC
     `;
 
-    const queryParams = [...params];
+    const queryParams = [...params, ...params];
     const isPaginated = req.query.page !== undefined || req.query.limit !== undefined || all !== 'true';
     if (isPaginated && all !== 'true') {
       sql += ` LIMIT ? OFFSET ?`;
@@ -2585,6 +2490,13 @@ app.get('/api/department/stats', authenticateToken, requireRole('hod', 'admin'),
 /* ==========================================================================
    DNN FACE RECOGNITION & ENROLLMENT SYSTEM
    ========================================================================== */
+const getFaceDbPath = () => {
+  const envPath = process.env.FACE_DB_PATH;
+  if (!envPath) {
+    return path.resolve(__dirname, 'face_db');
+  }
+  return path.isAbsolute(envPath) ? envPath : path.resolve(__dirname, envPath);
+};
 
 // Clear cached embeddings so DNN model recalculates embeddings on new photos
 const refreshOrClearEmbeddingsCache = async (baseDir) => {
@@ -2607,14 +2519,14 @@ const refreshOrClearEmbeddingsCache = async (baseDir) => {
           try {
             await fs.promises.unlink(fullPath);
             deletedFiles.push(fullPath);
-          } catch (e) {}
+          } catch (e) { }
         }
       } else if (entry.isDirectory() && (entry.name === '.cache' || entry.name === 'cache')) {
         const cacheDir = path.join(baseDir, entry.name);
         try {
           await fs.promises.rm(cacheDir, { recursive: true, force: true });
           deletedFiles.push(cacheDir);
-        } catch (e) {}
+        } catch (e) { }
       }
     }
   } catch (err) {
@@ -2802,11 +2714,15 @@ app.use((err, req, res, next) => {
     code: err.code || 'SERVER_ERROR'
   });
 });
+export { app };
+export default app;
 
-app.listen(PORT, () => {
-  console.log(`=========================================`);
-  console.log(`AttendanceX Server running on http://localhost:${PORT}`);
-  console.log(`Connected to SQLite Database: attendancex.db`);
-  console.log(`=========================================`);
-});
+if (process.env.NODE_ENV !== 'test' && !process.env.JEST_WORKER_ID) {
+  app.listen(PORT, () => {
+    console.log(`=========================================`);
+    console.log(`AttendanceX Server running on http://localhost:${PORT}`);
+    console.log(`Connected to SQLite Database: attendancex.db`);
+    console.log(`=========================================`);
+  });
+}
 
